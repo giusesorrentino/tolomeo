@@ -1,0 +1,16 @@
+[project]
+name = "tolomeo"
+version = "0.1.0.dev0"
+description = "A general-purpose mapmaker for radio telescopes."
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Giuseppe Sorrentino", email = "166509923+giusesorrentino@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.12.24,<0.13.0"]
+build-backend = "uv_build"
