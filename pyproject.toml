@@ -20,6 +20,7 @@ dependencies = [
     "astropy>=8.0.1",
     "matplotlib>=3.11.2",
     "numpy>=2.5.4",
+    "pyyaml>=6.0.3",
     "scipy>=1.18.1",
 ]
 

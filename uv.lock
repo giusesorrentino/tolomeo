@@ -897,6 +897,7 @@ dependencies = [
     { name = "astropy" },
     { name = "matplotlib" },
     { name = "numpy" },
+    { name = "pyyaml" },
     { name = "scipy" },
 ]
 
@@ -916,6 +917,7 @@ requires-dist = [
     { name = "astropy", specifier = ">=8.0.1" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "numpy", specifier = ">=2.5.4" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scipy", specifier = ">=1.18.1" },
 ]
 
