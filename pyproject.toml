@@ -1,3 +1,10 @@
+[build-system]
+build-backend = "mesonpy"
+requires = [
+    "meson-python>=0.15.0",
+    "numpy>=2.0.0",
+]
+
 [project]
 name = "tolomeo"
 version = "0.1.0.dev0"
@@ -9,13 +16,16 @@ authors = [
     { name = "Giuseppe Sorrentino", email = "166509923+giusesorrentino@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
-
-[build-system]
-requires = ["uv_build>=0.12.24,<0.13.0"]
-build-backend = "uv_build"
+dependencies = [
+    "astropy>=8.0.1",
+    "numpy>=2.5.4",
+]
 
 [dependency-groups]
+build = [
+    "meson-python>=0.22.1",
+    "ninja>=1.13.2",
+]
 dev = [
     "pre-commit>=4.6.2",
     "ruff>=0.17.0",
