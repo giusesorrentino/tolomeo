@@ -180,7 +180,7 @@ def smoke():
     suffix = "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""
     tag = f"Python {v.major}.{v.minor}{suffix}"
 
-    whldir = ROOT / ".ichnoof" / "smoke_test" / f"cp{v.major}{v.minor}{suffix}"
+    whldir = ROOT / ".tolomeo" / "smoke_test" / f"cp{v.major}{v.minor}{suffix}"
 
     print(f"🔥 Running smoke test for {tag} (it may take a while)...")
 
