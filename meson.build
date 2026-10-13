@@ -40,7 +40,7 @@ print(incdir)
   ).stdout().strip()
 endif
 
-inc_np = include_directories(incdir_numpy)
+inc_np = include_directories(incdir_numpy, is_system: true)
 
 # Disable deprecated NumPy C API features for forward compatibility.
 # This define only concerns C code, so it is passed as c_args to the
@@ -56,11 +56,21 @@ _numpy_dep = dependency('numpy')
 # ---------------------------------------------------------------------------
 incdir_f2py = run_command(
   py,
-  ['-c', 'import numpy.f2py; print(numpy.f2py.get_include())'],
+  [
+    '-c',
+    '''import os
+import numpy.f2py
+try:
+  incdir = os.path.relpath(numpy.f2py.get_include())
+except Exception:
+  incdir = numpy.f2py.get_include()
+print(incdir)
+'''
+  ],
   check: true
 ).stdout().strip()
 
-inc_f2py = include_directories(incdir_f2py)
+inc_f2py = include_directories(incdir_f2py, is_system: true)
 fortranobject_c = incdir_f2py / 'fortranobject.c'
 
 # libquadmath is needed by some gfortran setups (see numpy gh-25000).
