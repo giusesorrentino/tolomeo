@@ -31,3 +31,6 @@ dev = [
     "ruff>=0.17.0",
     "spin>=0.18",
 ]
+
+[tool.uv]
+default-groups = ["dev", "build"]

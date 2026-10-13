@@ -403,6 +403,7 @@ wheels = [
 name = "tolomeo"
 version = "0.1.0.dev0"
 source = { editable = "." }
+default-groups = ["build", "dev"]
 dependencies = [
     { name = "astropy" },
     { name = "numpy" },
