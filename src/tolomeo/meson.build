@@ -15,3 +15,11 @@ py.install_sources(
   ],
   subdir: 'tolomeo'
 )
+
+configure_file(
+  input: '__config__.py.in',
+  output: '__config__.py',
+  configuration: conf_data,
+  install_dir: py.get_install_dir() / 'tolomeo',
+  install_tag: 'python-runtime',
+)
