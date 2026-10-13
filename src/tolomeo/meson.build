@@ -23,3 +23,5 @@ configure_file(
   install_dir: py.get_install_dir() / 'tolomeo',
   install_tag: 'python-runtime',
 )
+
+subdir('filtering')
