@@ -12,7 +12,7 @@ RUN_CMD = ["uv", "run", "--active"]
 
 
 @click.command(context_settings={"ignore_unknown_options": True})
-@click.argument("path", default="src/ichnoof", required=False)
+@click.argument("path", default="python/tolomeo", required=False)
 @click.option("--fix", is_flag=True, default=False, help="Auto-fix fixable lint errors")
 @click.option(
     "--unsafe-fixes", is_flag=True, default=False, help="Auto-fix hidden lint errors"
@@ -29,7 +29,7 @@ def lint(path, fix, unsafe_fixes):
 
     \b
     Lint a specific file or directory:
-    $ spin lint src/ichnoof/optimize/fit.py
+    $ spin lint src/tolomeo/optimize/fit.py
 
     \b
     Auto-fix fixable errors:
@@ -64,7 +64,14 @@ def lint(path, fix, unsafe_fixes):
     default=True,
     help="Install the package in editable mode after building.",
 )
-def build(install):
+@click.option(
+    "-r",
+    "--release",
+    is_flag=True,
+    default=False,
+    help="Build in release mode with optimizations.",
+)
+def build(install, release):
     """🔧 Build the package (and install it in editable mode by default).
 
     \b
@@ -75,30 +82,35 @@ def build(install):
     $ spin build
 
     \b
-    Build only, without installing:
+    Build only (wheel generation), without installing:
     $ spin build --no-install
+
+    \b
+    Build in release mode (optimized Rust build):
+    $ spin build --release
     """
+    extra_flags = ["--release"] if release else []
 
-    v = sys.version_info
-    suffix = "t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""
-    relative_build_dir = f"build/cp{v.major}{v.minor}{suffix}"
-    build_dir = ROOT / relative_build_dir
+    # Costruiamo la lista degli argomenti base per maturin
+    if release:
+            current_rustflags = os.environ.get("RUSTFLAGS", "")
+            os.environ["RUSTFLAGS"] = f"{current_rustflags} -C target-cpu=native".strip()
 
-    print(
-        f"🧹 Cleaning previous build directory for Python {v.major}.{v.minor}{suffix}..."
-    )
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
+    spin.util.run(["cargo", "clean"])
+
+    for file in (ROOT / "python" / "tolomeo").glob("*.so"):
+        file.unlink()
+    for file in (ROOT / "python" / "tolomeo").glob("*.pyd"):
+        file.unlink()
+
+    print("✨ Cleaned all build artifacts!")
 
     if install:
-        print("🔨 Building and installing in editable mode...")
-        spin.util.run(
-            ["uv", "pip", "install", "-e", str(ROOT), "--no-build-isolation"]
-        )
+        print("🔨 Building and installing in editable mode via maturin...")
+        spin.util.run(["uv", "run", "maturin", "develop"] + extra_flags)
     else:
-        print(f"🔨 Building only in '{relative_build_dir}' (no installation)...")
-        spin.util.run(RUN_CMD + ["meson", "setup", str(build_dir)])
-        spin.util.run(RUN_CMD + ["meson", "compile", "-C", str(build_dir)])
+        print("🔨 Building wheel only via maturin (no installation)...")
+        spin.util.run(["uv", "run", "maturin", "build"] + extra_flags)
 
 
 @click.command()
