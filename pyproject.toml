@@ -1,15 +1,11 @@
 [build-system]
-build-backend = "maturin"
-requires = ["maturin>=1.0,<2.0"]
-
-[tool.maturin]
-python-source = "python"
-module-name = "tolomeo._core"
+requires = ["uv_build>=0.12.24,<0.13.0"]
+build-backend = "uv_build"
 
 [project]
 name = "tolomeo"
 version = "0.1.0.dev0"
-description = "A general-purpose mapmaker for radio telescopes."
+description = "A maximum-likelihood mapmaker for MISTRAL based on ROMA."
 readme = "README.md"
 license = "MPL-2.0"
 license-files = ["LICENSE"]
@@ -33,29 +29,18 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: 3.15",
-    "Programming Language :: Rust",
     "Topic :: Software Development :: Libraries",
     "Topic :: Scientific/Engineering",
-    "Operating System :: Microsoft :: Windows",
-    "Operating System :: POSIX :: Linux",
-    "Operating System :: POSIX",
-    "Operating System :: Unix",
-    "Operating System :: MacOS",
+    "Operating System :: OS Independent",
 ]
 
 [dependency-groups]
-build = [
-    "maturin>=1.15.0",
-]
 dev = [
     "ipykernel>=7.4.0",
     "pre-commit>=4.6.2",
     "ruff>=0.17.0",
     "spin>=0.18",
 ]
-
-[tool.uv]
-default-groups = ["dev", "build"]
 
 [tool.spin]
 package = "tolomeo"
