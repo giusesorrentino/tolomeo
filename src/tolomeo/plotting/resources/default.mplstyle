@@ -1,0 +1,41 @@
+# LINES
+lines.linewidth     : 0.8
+
+# TEXT
+text.usetex         : True
+mathtext.fontset    : stix
+
+# FONT
+font.family         : DejaVu Sans
+font.serif          : Computer Modern Roman
+font.size           : 13  # given in pt
+
+# AXES
+axes.labelsize      : small
+axes.linewidth      : 0.5
+axes.titlesize      : small
+axes.grid           : False
+axes.prop_cycle     : cycler('color', ['1f2db4', 'b41f2d', '1fb4a6', 'b4a61f'])
+
+# TICKS
+xtick.labelsize     : small
+ytick.labelsize     : small
+xtick.direction     : in
+ytick.direction     : in
+
+# IMAGES
+image.cmap          : afmhot
+image.origin        : lower
+
+# FIGURE
+figure.titlesize    : large
+
+# LEGEND
+legend.fontsize     : x-small
+legend.fancybox     : False
+legend.borderpad    : 0.4
+
+# SAVE FIGURE
+savefig.dpi         : 300
+savefig.format      : png
+savefig.bbox : tight

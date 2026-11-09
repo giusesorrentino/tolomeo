@@ -1,0 +1,55 @@
+# Cleaning steps, run from top to bottom; the same step can appear more than once.
+# This list replaces the default ([common_mode, baseline]): to keep those two,
+# write them here.
+#
+# Available steps and their parameters:
+#   remove_slope        none
+#   common_mode         method: median (default) or mean          [per subscan]
+#   baseline            deg: degree of the polynomial (default 1) [per subscan]
+#   remove_spline       knot_spacing (in days), order (default 3) [per subscan]
+#   window              name (a scipy.signal.windows function), kwargs
+#   lowpass             fc (Hz), order (default 4)
+#   highpass            fc (Hz), order (default 4)
+#   bandpass            f_lower (Hz), f_upper (Hz), order (default 4)
+#   remove_modes        modes_to_remove
+#
+# A value with a physical dimension (fc, f_lower, f_upper in Hz; knot_spacing in days;
+# radius in arcmin; center in degrees) is a plain number in that unit, or a string with
+# a number and a unit that astropy reads: `fc: 0.05` and `fc: 50 mHz` are the same.
+
+# Optional mask that leaves the source out of the fits of common_mode, baseline
+# and remove_spline (not of remove_slope, window, filters or remove_modes). The
+# distance from the source is measured for every detector.
+#
+# mask:
+#   type: radius
+#   radius: 3.5       # arcmin
+#   center: auto      # auto = mean boresight of the scan, or [ra, dec] in degrees
+#
+# Two other masks do not need the position of the source (nor `geometry`):
+#
+# mask:
+#   type: sigma_clip  # samples that stand out of the noise, one mask per detector
+#   sigma: 6
+#   maxiters: 10
+#
+# mask:
+#   type: edges       # only the two ends of each subscan (for baseline and spline)
+#   fraction: 0.1     # of the subscan, at each end
+
+steps:
+  - type: common_mode
+    method: median
+  - type: baseline
+    deg: 1
+
+  # - type: remove_slope
+  # - type: window
+  #   name: tukey
+  #   kwargs: {alpha: 0.1}
+  # - type: highpass
+  #   fc: 0.05
+  # - type: lowpass
+  #   fc: 50
+  # - type: remove_modes
+  #   modes_to_remove: 1

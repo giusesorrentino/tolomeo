@@ -1,0 +1,11 @@
+# only point sources
+steps:
+  - type: common_mode      # una puntiforme è vista da pochi rivelatori, la mediana la ignora
+    method: median
+  - type: baseline
+    deg: 1
+  - type: remove_modes     # qui puoi essere aggressivo: non devi preservare il cluster
+    modes_to_remove: 2
+  - type: highpass
+    fc: 2.0                # = 0.2 · v/FWHM, con v/FWHM = 10 Hz
+    order: 4               # dopo la ristrutturazione

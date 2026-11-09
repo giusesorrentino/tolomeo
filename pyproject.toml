@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MPL-2.0"
 license-files = ["LICENSE"]
 authors = [
-    { name = "Giuseppe Sorrentino", email = "166509923+giusesorrentino@users.noreply.github.com" }
+    { name = "Giuseppe Sorrentino", email = "166509923+giusesorrentino@users.noreply.github.com" },
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -52,3 +52,6 @@ package = "tolomeo"
     ".spin/cmds.py:smoke",
     ".spin/cmds.py:test",
 ]
+
+[project.scripts]
+tolomeo = "tolomeo._cli:main"

@@ -1,0 +1,94 @@
+from typing import Any
+
+import numpy as np
+from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict
+
+from .geometry import MapGeometry
+
+__all__ = ["BinnedMapResult", "MapResult"]
+
+
+class MapResult(BaseModel):
+    """
+    Output of :func:`tolomeo.mapmaking.gls_map`.
+
+    Attributes
+    ----------
+    image : :class:`~numpy.ndarray` of float64
+        The map, in the units of the TOD. Pixel ``(iy, ix)`` is the element
+        ``image[iy, ix]``; the flat kernel pixel is ``iy * nx + ix``.
+        Shape ``(ny, nx)``.
+    hits : :class:`~numpy.ndarray` of int64
+        Number of valid samples that fell in every pixel.
+        Shape ``(ny, nx)``.
+    n_iter : int
+        Conjugate-gradient iterations done by the kernel.
+    residual : float
+        Final relative residual of the conjugate gradient.
+    geometry : :class:`~tolomeo.map.MapGeometry`
+        Geometry the map was made with: the FITS writer needs it for the WCS.
+    """
+
+    # numpy arrays are not pydantic types: they are only checked with isinstance
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    image: NDArray[np.float64]
+    hits: NDArray[np.int64]
+    n_iter: int
+    residual: float
+    geometry: MapGeometry
+
+    def model_post_init(self, context: Any, /) -> None:
+        """Raise ``ValueError`` if ``image`` or ``hits`` is not ``(ny, nx)``."""
+        # image and hits must be 2D maps with the shape of the geometry
+        shape = (self.geometry.ny, self.geometry.nx)
+        for name in ("image", "hits"):
+            array = getattr(self, name)
+            if array.shape != shape:
+                raise ValueError(
+                    f"`{name}` must have shape (ny, nx) = {shape}, got {array.shape}."
+                )
+
+
+class BinnedMapResult(BaseModel):
+    """
+    Output of :func:`tolomeo.mapmaking.binned_map`.
+
+    Attributes
+    ----------
+    image : :class:`~numpy.ndarray` of float64
+        Mean of the samples in every pixel, in the units of the TOD; NaN where
+        ``hits == 0``. Pixel ``(iy, ix)`` is ``image[iy, ix]``.
+        Shape ``(ny, nx)``.
+    hits : :class:`~numpy.ndarray` of int64
+        Number of samples used in every pixel.
+        Shape ``(ny, nx)``.
+    std : :class:`~numpy.ndarray` of float64
+        Sample standard deviation in every pixel; NaN where ``hits <= 1``.
+        Shape ``(ny, nx)``.
+    geometry : :class:`~tolomeo.map.MapGeometry`
+        Geometry the map was made with: the FITS writer needs it for the WCS.
+
+    Unlike :class:`~tolomeo.map.MapResult`, the shapes are not checked.
+    """
+
+    # numpy arrays are not pydantic types: they are only checked with isinstance
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    image: NDArray[
+        np.float64
+    ]  # mean of the samples in every pixel, NaN where hits == 0
+    hits: NDArray[np.int64]
+    std: NDArray[np.float64]  # sample std in every pixel, NaN where hits <= 1
+    geometry: MapGeometry
+
+    # def __post_init__(self) -> None:
+    #     # image and hits must be 2D maps with the shape of the geometry
+    #     shape = (self.geometry.ny, self.geometry.nx)
+    #     for name in ("image", "hits"):
+    #         array = getattr(self, name)
+    #         if array.shape != shape:
+    #             raise ValueError(
+    #                 f"`{name}` must have shape (ny, nx) = {shape}, got {array.shape}."
+    #             )
