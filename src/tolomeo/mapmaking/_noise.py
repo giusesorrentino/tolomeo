@@ -60,7 +60,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 from scipy.fft import irfft, rfft
-from scipy.signal import csd, welch
+from scipy.signal import welch
 
 from .._lib.parallel import _resolve_workers
 from .._lib.spectral import _check_nyquist, _narrow_passband, _prepare_for_spectrum
@@ -170,7 +170,7 @@ def _build_noise_model(
     # one entry per spectrum: the column of inv_noiseps and the pair of detectors
     columns = []
     pairs = []
-    
+
     def _welch_inverse_ps(
         tod: NDArray[np.float64],
         sample_rate: float,
@@ -180,7 +180,7 @@ def _build_noise_model(
         nperseg = 2 * (n_freqs - 1)
         tod = _prepare_for_spectrum(tod, background)
         _, psd = welch(x=tod, fs=sample_rate, window="hann", nperseg=nperseg)
-        
+
         floor = np.median(np.abs(psd)) * 1e-6
         sign = np.where(psd < 0, -1.0, 1.0)
         inverse = sign / np.maximum(np.abs(psd), floor)
@@ -256,7 +256,7 @@ def _build_noise_model(
         #                 f"({k}/{n_pairs} pairs)"
         #             )
 
-        print(f"[NOISE] Cross-spectra done in {time.perf_counter() - t1:.2f}s")
+        # print(f"[NOISE] Cross-spectra done in {time.perf_counter() - t1:.2f}s")
 
     # (n_freqs, n_cols): one column per spectrum
     inv_noiseps = np.column_stack(columns)
@@ -424,7 +424,7 @@ def estimate_inverse_noise(
         cross_spectra=cross_spectra,
         workers=workers,
     )
-    freqs = np.fft.rfftfreq(2 * (n_freqs - 1), d=1/sample_rate)
+    freqs = np.fft.rfftfreq(2 * (n_freqs - 1), d=1 / sample_rate)
 
     # the filters first: the level of the marginalization is relative to the maximum of
     # the weights that are really used
@@ -538,7 +538,7 @@ class InverseNoiseFilter:
         n_freqs = inv_noiseps.shape[0]
         weights = np.empty((n_det, n_freqs))
         n_seen = np.zeros(n_det, dtype=int)  # how many columns claim each detector
-    
+
         # every column of inv_noiseps is the spectrum of the pair (f, r) = det_pairs[i]
         for i, (f, r) in enumerate(det_pairs):
             if f != r:
@@ -547,10 +547,12 @@ class InverseNoiseFilter:
                     "only auto spectra (j, j) are supported"
                 )
             if f >= n_det:
-                raise ValueError(f"column {i} refers to detector {f}, but n_det = {n_det}")
+                raise ValueError(
+                    f"column {i} refers to detector {f}, but n_det = {n_det}"
+                )
             weights[f] = inv_noiseps[:, i]
             n_seen[f] += 1
-    
+
         # np.empty left the rows uninitialised: every detector must have been written once,
         # otherwise a row would hold garbage (missing) or the last column wins (repeated)
         if not np.all(n_seen == 1):

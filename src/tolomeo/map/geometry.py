@@ -5,8 +5,8 @@ import numpy as np
 from astropy.wcs import WCS
 from pydantic import BaseModel, ConfigDict, Field
 
-from .._typing import Frame, Projection
 from .._lib.units import Arcsec, Radians, _to_unit
+from .._typing import Frame, Projection
 
 __all__ = ["MapGeometry"]
 

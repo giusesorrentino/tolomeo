@@ -88,8 +88,8 @@ import yaml
 from numpy import deg2rad
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .._typing import ResidualNorm
 from .._lib.units import Kelvin, _to_unit
+from .._typing import ResidualNorm
 from ..io import read_scan
 from ..io.map import _check_suffix
 from ..map import MapGeometry

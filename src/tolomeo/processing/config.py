@@ -4,8 +4,8 @@ from typing import Annotated, Literal, Self
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .._typing import CommonModeMethod
 from .._lib.units import Arcmin, Days, Degrees, Hz
+from .._typing import CommonModeMethod
 
 __all__ = [
     "Bandpass",

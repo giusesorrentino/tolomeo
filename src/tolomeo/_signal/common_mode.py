@@ -103,6 +103,7 @@ def remove_common_mode(
 # The "corr" method is adapted from the custom common mode of MIRTOS:
 # https://github.com/EleBarbavara/mirtos/blob/main/src/mirtos/cleaner_class.py#L31
 
+
 def _correlated_common_mode(
     D: NDArray[np.float64], usable: NDArray[np.bool_]
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
