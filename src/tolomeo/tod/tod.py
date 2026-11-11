@@ -27,6 +27,10 @@ class TimeOrderedData(BaseModel):
         Shape ``(n_subscans + 1,)``.
     passband : float or 2-tuple of floats, optional
         ...
+    unit : str, optional
+        Unit of ``signal``, as a FITS unit string (``"K"`` after
+        :func:`~tolomeo.processing.calibrate`). None means not known: the raw units of
+        the instrument.
     """
 
     # numpy arrays are not pydantic types: they are only checked with isinstance
@@ -37,6 +41,7 @@ class TimeOrderedData(BaseModel):
     flags: NDArray[np.bool_]  # shape (n_samples,)
     segments: NDArray[np.int64]
     passband: tuple[float, float] | None = None
+    unit: str | None = None
 
     def select(
         self, mask: NDArray[np.bool_]

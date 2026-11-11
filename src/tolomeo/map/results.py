@@ -28,6 +28,19 @@ class MapResult(BaseModel):
         Final relative residual of the conjugate gradient.
     geometry : :class:`~tolomeo.map.MapGeometry`
         Geometry the map was made with: the FITS writer needs it for the WCS.
+    weights : :class:`~numpy.ndarray` of float64, optional
+        Noise weight of every pixel: the sum, over the samples used in the pixel, of the
+        zero-lag weight of their detector (``lag_zero``). It is the diagonal of the
+        preconditioner of the conjugate gradient: for white noise it is proportional to
+        the inverse of the variance of the pixel, for correlated noise only an
+        approximation of it. 0 where ``hits == 0``. None if it was not computed.
+        Shape ``(ny, nx)``.
+    converged : bool
+        True if the conjugate gradient reached ``tol``; False if it stopped at
+        ``maxiter`` before. Default ``True``.
+    unit : str, optional
+        Unit of ``image``, as a FITS unit string (``"K"`` for a calibrated scan). None
+        means not known: the raw units of the instrument.
     """
 
     # numpy arrays are not pydantic types: they are only checked with isinstance
@@ -38,13 +51,18 @@ class MapResult(BaseModel):
     n_iter: int
     residual: float
     geometry: MapGeometry
+    weights: NDArray[np.float64] | None = None
+    converged: bool = True
+    unit: str | None = None
 
     def model_post_init(self, context: Any, /) -> None:
-        """Raise ``ValueError`` if ``image`` or ``hits`` is not ``(ny, nx)``."""
-        # image and hits must be 2D maps with the shape of the geometry
+        """Raise ``ValueError`` if ``image``, ``hits`` or ``weights`` is not ``(ny, nx)``."""
+        # image, hits and weights must be 2D maps with the shape of the geometry
         shape = (self.geometry.ny, self.geometry.nx)
-        for name in ("image", "hits"):
+        for name in ("image", "hits", "weights"):
             array = getattr(self, name)
+            if array is None:  # only `weights` can be missing
+                continue
             if array.shape != shape:
                 raise ValueError(
                     f"`{name}` must have shape (ny, nx) = {shape}, got {array.shape}."

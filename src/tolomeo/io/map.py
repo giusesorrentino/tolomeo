@@ -1,5 +1,6 @@
 """Write a map to FITS, and read it back."""
 
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import numpy as np
@@ -23,14 +24,20 @@ def write_map(
     path: str | Path,
     *,
     extra_header: dict | None = None,
+    config: str | None = None,
     overwrite: bool = False,
 ) -> None:
     """
-    Write a map and its hit count to a FITS file.
+    Write a map, its hit count and its weights to a FITS file.
 
-    The primary HDU (``EXTNAME = "SCI"``) holds ``result.image`` with the WCS of
-    ``result.geometry`` and the keywords ``NITER`` and ``RESID``; the extension
-    ``"HITS"`` holds ``result.hits`` with the same header.
+    * Primary HDU (``EXTNAME = "SCI"``): ``result.image`` with the WCS of
+      ``result.geometry`` and the keywords ``BUNIT`` (if ``result.unit`` is known),
+      ``NITER``, ``RESID``, ``CONVERGD``, ``TOLOMEO`` (version of the package) and those
+      of ``extra_header``.
+    * ``"HITS"``: ``result.hits``, with the WCS and ``BUNIT = "count"``.
+    * ``"WEIGHTS"``: ``result.weights``, with the WCS; only if they are not None.
+    * ``"CONFIG"``: a table with one column, ``LINE``, that holds the lines of
+      ``config``; only if it is given.
 
     Parameters
     ----------
@@ -40,8 +47,12 @@ def write_map(
         Output file; it must end with a FITS suffix (``.fits``, ``.fit``, ``.fts``,
         optionally ``.gz``).
     extra_header : dict, optional
-        More header keywords (for example ``{"OBJECT": "Jupiter"}``), added to both
-        HDUs.
+        More header keywords (for example ``{"OBJECT": "Jupiter"}``), added to the
+        image HDUs (``SCI``, ``HITS`` and ``WEIGHTS``).
+    config : str, optional
+        Text that says how the map was made, for example the YAML file of the run. It
+        is stored line by line, so that the FITS file is enough to know it. Characters
+        that are not ASCII are written as escape sequences (``\\xe8``).
     overwrite : bool
         Replace ``path`` if it exists.
         Default ``False``.
@@ -49,19 +60,46 @@ def write_map(
 
     _check_suffix(Path(path))
 
-    wcs = result.geometry.to_wcs()
+    # header shared by the image HDUs: the WCS and the keywords of the caller
+    base = result.geometry.to_wcs().to_header()
+    base.update(extra_header or {})
 
-    hdr = wcs.to_header()
-    hdr.update(extra_header)
+    try:
+        base["TOLOMEO"] = (version("tolomeo"), "Version of tolomeo")
+    except PackageNotFoundError:
+        pass
 
+    # the keywords of the solver describe the map, not the hits or the weights
+    hdr = base.copy()
+    if result.unit is not None:
+        hdr["BUNIT"] = (result.unit, "Unit of the map")
     hdr["NITER"] = (result.n_iter, "Conjugate gradient iterations")
     hdr["RESID"] = (result.residual, "Final CG residual")
+    hdr["CONVERGD"] = (result.converged, "The CG reached the tolerance")
     hdr["EXTNAME"] = "SCI"
 
-    primary = fits.PrimaryHDU(result.image, header=hdr)
-    hits_hdu = fits.ImageHDU(result.hits, header=hdr, name="HITS")
+    hdus = [fits.PrimaryHDU(result.image, header=hdr)]
 
-    fits.HDUList([primary, hits_hdu]).writeto(path, overwrite=overwrite)
+    hits_hdr = base.copy()
+    hits_hdr["BUNIT"] = ("count", "Samples used in the pixel")
+    hdus.append(fits.ImageHDU(result.hits, header=hits_hdr, name="HITS"))
+
+    if result.weights is not None:
+        weights_hdr = base.copy()
+        weights_hdr["COMMENT"] = "Sum of the zero-lag noise weights of the samples."
+        hdus.append(fits.ImageHDU(result.weights, header=weights_hdr, name="WEIGHTS"))
+
+    if config is not None:
+        # FITS strings are ASCII: anything else becomes an escape sequence
+        lines = [
+            line.encode("ascii", "backslashreplace").decode("ascii")
+            for line in config.splitlines()
+        ] or [""]
+        width = max(1, max(len(line) for line in lines))
+        column = fits.Column(name="LINE", format=f"{width}A", array=np.array(lines))
+        hdus.append(fits.BinTableHDU.from_columns([column], name="CONFIG"))
+
+    fits.HDUList(hdus).writeto(path, overwrite=overwrite)
 
 
 def read_map(path: str | Path) -> MapResult:
@@ -78,7 +116,9 @@ def read_map(path: str | Path) -> MapResult:
     :class:`~tolomeo.map.MapResult`
         ``image`` (float64) and ``hits`` (int64) of shape ``(ny, nx)``, ``n_iter`` and
         ``residual`` from the header, and the geometry rebuilt from ``CDELT2``,
-        ``CRVAL1``, ``CRVAL2`` and ``CTYPE1``.
+        ``CRVAL1``, ``CRVAL2`` and ``CTYPE1``. ``weights``, ``converged`` and ``unit``
+        come from the ``"WEIGHTS"`` extension and the keywords ``CONVERGD`` and
+        ``BUNIT``; a file written before they existed gives None, True and None.
 
     Notes
     -----
@@ -116,6 +156,17 @@ def read_map(path: str | Path) -> MapResult:
         except KeyError as exc:
             raise ValueError(f"{path} is not a tolomeo map: missing {exc}") from exc
 
+        weights = None
+        if "WEIGHTS" in hdul:
+            weights = hdul["WEIGHTS"].data.astype(np.float64)
+
         return MapResult(
-            image=image, hits=hits, n_iter=n_iter, residual=residual, geometry=geometry
+            image=image,
+            hits=hits,
+            n_iter=n_iter,
+            residual=residual,
+            geometry=geometry,
+            weights=weights,
+            converged=bool(header.get("CONVERGD", True)),
+            unit=header.get("BUNIT"),
         )

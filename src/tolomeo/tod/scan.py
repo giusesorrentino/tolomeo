@@ -60,6 +60,12 @@ class Scan(BaseModel):
     detector_ids : list of int
         Beammap id of every detector, in the order of the columns of the signal.
         Length ``n_det``.
+    telescope : str, optional
+        Name of the telescope, written in the FITS map as ``TELESCOP``.
+        Default ``"SRT"``.
+    instrument : str, optional
+        Name of the instrument, written in the FITS map as ``INSTRUME``.
+        Default ``"MISTRAL"``.
     """
 
     # numpy arrays are not pydantic types: they are only checked with isinstance
@@ -69,6 +75,8 @@ class Scan(BaseModel):
     coordinates: Coordinates
     offsets: dict[str, NDArray[np.float64]]
     detector_ids: list[int]
+    telescope: str | None = "SRT"
+    instrument: str | None = "MISTRAL"
 
     def select(self, mask: NDArray[np.bool_]) -> Scan:  # mask has shape (n_samples,)
         """
