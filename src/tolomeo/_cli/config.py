@@ -89,7 +89,7 @@ from numpy import deg2rad
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .._typing import ResidualNorm
-from .._units import Kelvin, _to_unit
+from .._lib.units import Kelvin, _to_unit
 from ..io import read_scan
 from ..io.map import _check_suffix
 from ..map import MapGeometry

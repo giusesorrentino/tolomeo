@@ -6,7 +6,7 @@ from astropy.wcs import WCS
 from pydantic import BaseModel, ConfigDict, Field
 
 from .._typing import Frame, Projection
-from .._units import Arcsec, Radians, _to_unit
+from .._lib.units import Arcsec, Radians, _to_unit
 
 __all__ = ["MapGeometry"]
 

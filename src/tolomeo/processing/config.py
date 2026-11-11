@@ -5,7 +5,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .._typing import CommonModeMethod
-from .._units import Arcmin, Days, Degrees, Hz
+from .._lib.units import Arcmin, Days, Degrees, Hz
 
 __all__ = [
     "Bandpass",

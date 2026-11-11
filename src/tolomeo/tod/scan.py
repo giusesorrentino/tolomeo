@@ -7,7 +7,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from .._units import Arcsec
+from .._lib.units import Arcsec
 from ..coords import Coordinates
 from .tod import TimeOrderedData
 

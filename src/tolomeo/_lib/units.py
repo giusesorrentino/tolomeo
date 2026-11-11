@@ -67,7 +67,7 @@ def _to_unit(value: Any, unit: u.UnitBase) -> float:
     elif isinstance(value, numbers.Real):
         return float(value)
     else:
-        raise ValueError(
+        raise TypeError(
             "expected a number, a string such as "
             f"'4 {unit}' or an astropy Quantity, got {type(value).__name__}."
         )
