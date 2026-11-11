@@ -25,6 +25,7 @@ import time
 import numpy as np
 from numpy.typing import NDArray
 
+from .._lib.spectral import _check_nyquist, _narrow_passband
 from .._signal.detrend import remove_slope
 from .._signal.filters import bandpass, highpass, lowpass
 from ..map import MapGeometry
@@ -32,7 +33,6 @@ from ..tod import Scan
 from ._mask import _build_mask
 from ._steps import (
     _baseline,
-    _check_nyquist,
     _common_mode,
     _remove_modes,
     _spline,
@@ -94,30 +94,6 @@ def _check_scan(scan, background) -> None:
 
     if scan.tod.flags.shape != (n_samples,):
         raise ValueError("Flag length does not match the TOD.")
-
-
-def _narrow_passband(
-    passband: tuple[float, float] | None, f_lower: float = 0.0, f_upper: float = np.inf
-) -> tuple[float, float]:
-    """
-    Band left by one more filter: the intersection of ``passband`` with ``[f_lower, f_upper]``.
-
-    ``passband`` is the band of the filters already applied (None if there is none yet).
-    With more filters in the same config, or ``process_tod`` called more than once, the
-    band is the frequencies that all of them keep.
-
-    Raises
-    ------
-    ValueError
-        If the filters together leave no frequency.
-    """
-    lo, hi = passband if passband is not None else (0.0, np.inf)
-    lo, hi = max(lo, f_lower), min(hi, f_upper)
-    if lo >= hi:
-        raise ValueError(
-            f"The filters leave no frequency band: [{lo}, {hi}] Hz is empty."
-        )
-    return (lo, hi)
 
 
 def _run_steps(scan, steps, background, overwrite_scan):
@@ -193,7 +169,9 @@ def _run_steps(scan, steps, background, overwrite_scan):
         if np.isnan(signal).any():
             raise ValueError(f"{step.type} introduced NaNs.")
 
-    cleaned = scan.model_copy(update={"tod": tod.model_copy(update={"signal": signal, "passband": passband})})
+    cleaned = scan.model_copy(
+        update={"tod": tod.model_copy(update={"signal": signal, "passband": passband})}
+    )
     return _drop_invalid_pointing(cleaned)
 
 

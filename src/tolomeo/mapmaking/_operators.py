@@ -135,7 +135,7 @@ def _filter_and_bin(
     and ``pointing`` adds the core of the result to a map of ``n_unknowns`` elements.
 
     ``workers`` is the number of threads (an integer >= 1: ``None`` and negative values
-    are resolved before, in ``_gls._resolve_workers``). The blocks are split in
+    are resolved before, in ``_lib.parallel._resolve_workers``). The blocks are split in
     ``workers`` contiguous ranges, one per thread. Each thread accumulates into its own
     map, so no lock is needed, and at the end the maps are summed. With ``workers=1`` no
     thread is created. Threads help because the heavy calls (FFT, gather, copies,

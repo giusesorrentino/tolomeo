@@ -25,18 +25,6 @@ def _normalize(a: NDArray) -> NDArray:
     return (a - a.min()) / span
 
 
-def _check_nyquist(sample_rate, *cutoffs):
-    """Raise if a cutoff frequency is not below the Nyquist frequency."""
-    nyquist = sample_rate / 2
-
-    for fc in cutoffs:
-        if fc >= nyquist:
-            raise ValueError(
-                f"A cutoff of {fc} Hz is not below the Nyquist frequency of "
-                f"{nyquist:.2f} Hz (sample rate {sample_rate:.2f} Hz)."
-            )
-
-
 def _common_mode(signal, tod, step, background):
     for start, stop in pairwise(tod.segments):
         if stop <= start:
