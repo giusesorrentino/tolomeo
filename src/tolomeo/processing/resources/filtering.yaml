@@ -4,7 +4,7 @@
 #
 # Available steps and their parameters:
 #   remove_slope        none
-#   common_mode         method: median (default) or mean          [per subscan]
+#   common_mode         method: median (default), mean or corr    [per subscan]
 #   baseline            deg: degree of the polynomial (default 1) [per subscan]
 #   remove_spline       knot_spacing (in days), order (default 3) [per subscan]
 #   window              name (a scipy.signal.windows function), kwargs
