@@ -6,10 +6,12 @@ from pathlib import Path
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
+from astropy.time import Time
 
 from ..io import write_map
 from ..map import MapGeometry, MapResult
-from ..mapmaking import gls_map
+from ..mapmaking import InverseNoise, estimate_inverse_noise, gls_map
 from ..plotting import plot_map
 from ..processing import calibrate, process_tod, skydip_responsivity
 from ..tod import Scan
@@ -24,8 +26,9 @@ class RunMapmaker:
 
     ``RunConfig.from_yaml`` has already read the scan (``read_scan``) and built the
     geometry (``MapGeometry``), so they are ``config.scan`` and ``config.geometry``. The
-    steps of the run are methods, one per stage of ``process_tod -> gls_map ->
-    write_map``, so that each one can be called (and tested) alone.
+    steps of the run are methods, one per stage of ``process_tod ->
+    estimate_inverse_noise -> gls_map -> write_map``, so that each one can be called (and
+    tested) alone.
     """
 
     def __init__(self, config: RunConfig) -> None:
@@ -50,12 +53,56 @@ class RunMapmaker:
                 f"{out.path} already exists: set `output.overwrite: true` to replace it."
             )
 
+        header = self._header(self.config.scan)
         scan = self._calibrate(self.config.scan)
         scan = self._clean(scan, self.config.geometry)
-        result = self._make_map(scan, self.config.geometry)
-        self._save(result)
+        inv_noise = self._estimate_noise(scan)
+        result = self._make_map(scan, self.config.geometry, inv_noise)
+        self._save(result, header)
 
         return result
+
+    def _header(self, scan: Scan) -> dict:
+        """
+        FITS keywords that describe the run, from ``scan`` (as read) and the config.
+
+        ``TELESCOP`` and ``INSTRUME`` (``scan.telescope`` and ``scan.instrument``, if not
+        None), ``DATE-OBS`` and ``MJD-OBS`` (first sample), ``NDET``, ``CALIB`` and, with a
+        calibration, ``TATM`` and ``TAUATM``, then ``NFREQS``, ``GLSTOL``, ``MAXITER``
+        and ``MINHITS``. The keywords of ``config.output.header`` come last, so they
+        replace these if they have the same name.
+        """
+        config = self.config
+        mjd = float(np.nanmin(scan.tod.time))
+
+        header = {}
+        if scan.telescope is not None:
+            header["TELESCOP"] = (scan.telescope, "Telescope")
+        if scan.instrument is not None:
+            header["INSTRUME"] = (scan.instrument, "Instrument")
+
+        header |= {
+            "DATE-OBS": (Time(mjd, format="mjd").isot, "UTC of the first sample"),
+            "MJD-OBS": (mjd, "MJD of the first sample"),
+            "NDET": (scan.tod.signal.shape[1], "Detectors read from the beammap"),
+            "CALIB": (config.calibration is not None, "Skydip calibration applied"),
+        }
+        if config.calibration is not None:
+            header["TATM"] = (config.calibration.T_atm, "[K] Atmosphere temperature")
+            header["TAUATM"] = (config.calibration.tau_atm, "Zenith opacity")
+            header["OPACORR"] = (
+                config.calibration.correct_opacity,
+                "Divided by the transmission",
+            )
+
+        header["NFREQS"] = (config.noise.n_freqs, "Bins of the noise spectra")
+        header["GLSTOL"] = (config.gls.tol, "Tolerance of the CG")
+        header["MAXITER"] = (config.gls.maxiter, "Maximum CG iterations")
+        if config.gls.min_hits_frac is not None:
+            header["MINHITS"] = (config.gls.min_hits_frac, "Min hits / max hits")
+
+        header.update(config.output.header)
+        return header
 
     def _calibrate(self, scan: Scan) -> Scan:
         """
@@ -112,19 +159,40 @@ class RunMapmaker:
 
         return scan
 
-    def _make_map(self, scan: Scan, geometry: MapGeometry) -> MapResult:
+    def _estimate_noise(self, scan: Scan) -> InverseNoise:
         """
-        ``gls_map(scan, geometry, ...)`` with the fields of ``config.gls``.
+        ``estimate_inverse_noise(scan, ...)`` with the fields of ``config.noise``.
 
-        ``n_freqs``, ``residual_norm``, ``tol``, ``maxiter``, ``min_hits_frac`` and
-        ``workers`` map one to one onto the arguments of ``gls_map`` (same names).
+        ``n_freqs``, ``filters`` and ``mask`` map one to one onto its arguments (same
+        names); without ``noise.mask`` the mask of ``config.filtering`` is used, so that
+        the source stays out of the spectra. The threads are ``config.gls.workers``.
+        """
+        noise = self.config.noise
+        mask = noise.mask if noise.mask is not None else self.config.filtering.mask
+        return estimate_inverse_noise(
+            scan=scan,
+            n_freqs=noise.n_freqs,
+            filters=noise.filters,
+            mask=mask,
+            geometry=self.config.geometry,
+            background=None,
+            cross_spectra=False,
+            workers=self.config.gls.workers,
+        )
+
+    def _make_map(
+        self, scan: Scan, geometry: MapGeometry, inv_noise: InverseNoise
+    ) -> MapResult:
+        """
+        ``gls_map(scan, geometry, inv_noise, ...)`` with the fields of ``config.gls``.
+
+        ``residual_norm``, ``tol``, ``maxiter``, ``min_hits_frac`` and ``workers`` map one
+        to one onto the arguments of ``gls_map`` (same names).
         """
         return gls_map(
             scan=scan,
             geometry=geometry,
-            n_freqs=self.config.gls.n_freqs,
-            cross_spectra=False,
-            background=None,
+            inv_noise=inv_noise,
             initial_map=None,
             residual_norm=self.config.gls.residual_norm,
             tol=self.config.gls.tol,
@@ -133,14 +201,14 @@ class RunMapmaker:
             workers=self.config.gls.workers,
         )
 
-    def _save(self, result: MapResult) -> None:
+    def _save(self, result: MapResult, header: dict) -> None:
         """
         Write the FITS map and, if asked, the image.
 
         1. Create the folder of ``config.output.path`` if it does not exist
            (``mkdir(parents=True, exist_ok=True)``).
-        2. ``write_map(result, path, extra_header=config.output.header,
-           overwrite=config.output.overwrite)``.
+        2. ``write_map(result, path, extra_header=header, config=config.yaml_text,
+           overwrite=config.output.overwrite)``, with ``header`` from ``_header``.
         3. If ``config.output.plot`` is set: ``plot_map(result)``, ``fig.savefig(...)``
            and ``plt.close(fig)`` so the figure does not stay in memory. The command
            line may run on a machine without a display: select the ``"Agg"`` backend
@@ -154,7 +222,8 @@ class RunMapmaker:
         write_map(
             result=result,
             path=output_path,
-            extra_header=self.config.output.header,
+            extra_header=header,
+            config=self.config.yaml_text,
             overwrite=self.config.output.overwrite,
         )
 
@@ -163,7 +232,7 @@ class RunMapmaker:
         plot_path = self.config.output.plot
         if plot_path is not None:
             plot_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             matplotlib.use("Agg")  # no display needed; before the first figure
             fig = plot_map(result=result)
             fig.savefig(plot_path, dpi=300, bbox_inches="tight")

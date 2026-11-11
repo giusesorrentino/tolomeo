@@ -1,8 +1,9 @@
 """
 GLS map of a cleaned scan: ``gls_map`` and, below it, ``_tod2map``.
 
-``gls_map`` is the entry point. It takes a ``Scan`` and a ``MapGeometry``, projects the
-samples on the map, estimates the noise and returns a ``MapResult``. The heavy part is
+``gls_map`` is the entry point. It takes a ``Scan``, a ``MapGeometry`` and the noise
+model of the scan (an ``InverseNoise``, from ``estimate_inverse_noise``), projects the
+samples on the map and returns a ``MapResult``. The heavy part is
 ``_tod2map``, which knows nothing about ``Scan``: from arrays to the flat map, by
 preconditioned conjugate gradient.
 
@@ -39,19 +40,19 @@ Array conventions of ``_tod2map`` (as they arrive from ``gls_map``):
 * ``n_pixels``    pixels of the sky map, virtual pixel *not* included
 """
 
-import os
 import time
 import warnings
 
 import numpy as np
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 
+from .._lib.parallel import _resolve_workers
 from .._typing import ResidualNorm
 from ..map import MapGeometry, MapResult
 from ..tod import Scan
 from ._blocks import BlockLayout
 from ._flags import _count_flagged, _first_out_of_range_pixel, _redirect_flagged_samples
-from ._noise import InverseNoiseFilter, _build_noise_model
+from ._noise import InverseNoise, InverseNoiseFilter
 from ._operators import PointingOperator, TemperatureNormalOperator, _build_rhs
 from ._pointing import _pointing_matrix
 from ._preconditioner import _build_diagonal_preconditioner
@@ -63,10 +64,8 @@ __all__ = ["gls_map"]
 def gls_map(
     scan: Scan,
     geometry: MapGeometry,
+    inv_noise: InverseNoise,
     *,
-    n_freqs: int = 4097,
-    cross_spectra: bool = False,
-    background: NDArray[np.bool_] | None = None,
     initial_map: NDArray[np.float64] | None = None,
     residual_norm: ResidualNorm = "plain",
     tol: float = 1e-3,
@@ -88,19 +87,12 @@ def gls_map(
         ``scan.tod.flags`` is ``(n_samples,)`` bool with ``True`` for a good sample.
     geometry : :class:`~tolomeo.map.MapGeometry`
         Map grid; the map has shape ``(ny, nx)``.
-    n_freqs : int
-        Bins of the noise spectra. The filter blocks have ``2 * (n_freqs - 1)`` samples.
-        Default ``4097``.
-    cross_spectra : bool
-        Also estimate the cross spectra of the detector pairs. Keep False: their use in
-        the operator is an open question, and the Python backend does not support them.
-        Default ``False``.
-    background : :class:`~numpy.ndarray` of bool, optional
-        ``True`` for the samples used to estimate the noise spectra (far from the
-        source). None means ``scan.tod.flags``.
-        Shape ``(n_samples,)``.
+    inv_noise : :class:`~tolomeo.mapmaking.InverseNoise`
+        Noise model of ``scan``, from :func:`~tolomeo.mapmaking.estimate_inverse_noise`:
+        same detectors, in the same order, and same sampling frequency.
     initial_map : :class:`~numpy.ndarray` of float64, optional
-        Starting point of the CG, flat (``iy * nx + ix``); zero if None.
+        Starting point of the CG, flat (``iy * nx + ix``). None means the binned map:
+        the mean of the used samples of every pixel, 0 where there is none.
         Shape ``(n_pixels,)``.
     residual_norm : :class:`~tolomeo._typing.ResidualNorm`
         Norm of the relative residual that stops the CG (ROMA's ``itol`` 1 and 2).
@@ -118,15 +110,16 @@ def gls_map(
         (excluded). None means every pixel.
         Default None.
     workers : int, optional
-        Threads of the pointing, the noise model and the CG, with SciPy's convention:
+        Threads of the pointing and the CG, with SciPy's convention:
         None is one thread, a positive number that many, ``-1`` all the cores, ``-2``
         all but one.
 
     Returns
     -------
     :class:`~tolomeo.map.MapResult`
-        ``image`` and ``hits`` with shape ``(ny, nx)``, the number of CG iterations and
-        the final relative residual.
+        ``image``, ``hits`` and ``weights`` with shape ``(ny, nx)``, the number of CG
+        iterations, the final relative residual and whether the CG converged. A
+        ``RuntimeWarning`` is issued if it did not.
     """
     # check the options first: a wrong one must fail now and not after the (slow)
     # pointing computation
@@ -137,8 +130,12 @@ def gls_map(
     if min_hits_frac is not None and not 0.0 <= min_hits_frac < 1.0:
         raise ValueError(f"`min_hits_frac` must be in [0, 1), got {min_hits_frac}.")
 
+    # the noise model must belong to this scan: one of another scan would give a wrong
+    # map without any error
+    _check_inv_noise(scan, inv_noise)
+
     # turn None / negative values into a number of threads, and reject 0: the same
-    # number is used by the pointing, the noise model and the CG
+    # number is used by the pointing and the CG
     workers = _resolve_workers(workers)
 
     # the time-ordered data, (n_samples, n_det), in the form that the kernels read
@@ -195,23 +192,26 @@ def gls_map(
 
     n_pixels = geometry.n_pixels
 
-    # the samples used to estimate the noise spectra
-    if background is None:
-        background = scan.tod.flags
-
-    # noise model: inverse spectra, detector pairs and zero-lag weights
-    inv_noiseps, det_pairs, lag_zero = _build_noise_model(
-        tod, scan.tod.sample_rate, n_freqs, background, cross_spectra, workers=workers,
-        passband=scan.tod.passband,
-    )
+    # starting point of the CG: the binned map (mean of the used samples of every pixel,
+    # 0 in the pixels without samples). One detector at a time, so that no
+    # (n_samples, n_det) array is created
+    if initial_map is None:
+        total = np.zeros(n_pixels)
+        for idet in range(n_det):
+            used = valid[:, idet]
+            total += np.bincount(
+                pixels[used, idet], weights=tod[used, idet], minlength=n_pixels
+            )
+        initial_map = np.divide(total, hits, out=np.zeros(n_pixels), where=hits > 0)
+        print("[MAP] Starting the CG from the binned map")
 
     image_flat, n_iter, residual = _tod2map(
         tod,
         pixels,
         valid,
-        inv_noiseps,
-        det_pairs,
-        lag_zero,
+        inv_noise.inv_noiseps,
+        inv_noise.det_pairs,
+        inv_noise.lag_zero,
         n_pixels,
         initial_map,
         residual_norm,
@@ -219,6 +219,25 @@ def gls_map(
         maxiter,
         workers=workers,
     )
+
+    # the CG stopped at maxiter before reaching tol: the map is not the GLS solution yet
+    # (the large scales are the last to converge)
+    converged = bool(residual <= tol)
+    if not converged:
+        warnings.warn(
+            f"The conjugate gradient did not converge: residual {residual:.2e} > tol "
+            f"{tol:.1e} after {n_iter} iterations. Increase `maxiter`.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    # weight map: for every pixel, the sum of the zero-lag weight of the detector of
+    # each sample used in it (the diagonal of the preconditioner, without the virtual
+    # pixel). One detector at a time, so that no (n_samples, n_det) array is created
+    weights = np.zeros(n_pixels)
+    for idet, weight in enumerate(inv_noise.lag_zero):
+        used = valid[:, idet]
+        weights += weight * np.bincount(pixels[used, idet], minlength=n_pixels)
 
     # hit map: computed above, before the CG
     n_hit = int((hits > 0).sum())
@@ -234,7 +253,25 @@ def gls_map(
         n_iter=n_iter,
         residual=residual,
         geometry=geometry,
+        weights=weights.reshape((geometry.ny, geometry.nx)),
+        converged=converged,
+        unit=scan.tod.unit,
     )
+
+
+def _check_inv_noise(scan: Scan, inv_noise: InverseNoise) -> None:
+    """
+    Refuse a noise model that does not belong to ``scan``. TODO: to implement.
+
+    A model of another scan would give a wrong map without any error.
+    """
+    # - inv_noise.detector_ids must be equal to scan.detector_ids, in the same order:
+    #   column j of inv_noiseps is used for column j of the TOD.
+    # - inv_noise.sample_rate must be equal to scan.tod.sample_rate within a small
+    #   relative tolerance (both come from the median time step): the bins of the
+    #   spectra are at k * sample_rate / block_len.
+    # - raise a ValueError that says what differs (for the detectors: how many, or the
+    #   first position where they differ).
 
 
 def _as_kernel_array(array: ArrayLike, dtype: DTypeLike, name: str) -> NDArray:
@@ -277,36 +314,6 @@ def _as_kernel_array(array: ArrayLike, dtype: DTypeLike, name: str) -> NDArray:
         )
 
     return np.ascontiguousarray(array, dtype=dtype)
-
-
-def _resolve_workers(workers: int | None) -> int:
-    """
-    Number of threads for a ``workers`` argument, with the convention of SciPy.
-
-    * ``None``: one thread, no parallelism;
-    * a positive integer: that many threads;
-    * a negative integer: counted back from the number of cores, so ``-1`` is all the
-      cores, ``-2`` all but one, and so on (``workers + n_cores + 1``);
-    * ``0``, or less than ``-n_cores``: ``ValueError``.
-    """
-    n_cores = os.cpu_count() or 1
-
-    if workers is None:
-        return 1
-
-    if workers == 0:
-        raise ValueError("`workers` must not be zero: use None for a single thread.")
-
-    if workers < -n_cores:
-        raise ValueError(
-            f"`workers` = {workers} is out of range: it must not be less than "
-            f"{-n_cores} (minus the number of cores)."
-        )
-
-    if workers < 0:
-        return workers + n_cores + 1
-
-    return workers
 
 
 def _check_inputs(

@@ -1,8 +1,9 @@
 """
 Configuration of the command line: the YAML file that ``tolomeo`` reads.
 
-The sections follow the pipeline ``read_scan -> process_tod -> MapGeometry -> gls_map ->
-write_map``; each key is an argument of one of those functions. Only ``scan`` and
+The sections follow the pipeline ``read_scan -> process_tod -> MapGeometry ->
+estimate_inverse_noise -> gls_map -> write_map``; each key is an argument of one of those
+functions. Only ``scan`` and
 ``output`` are required.
 
 Example::
@@ -37,8 +38,18 @@ Example::
         - type: baseline
         - type: common_mode
 
-    gls:                             # arguments of gls_map
+    noise:                           # arguments of estimate_inverse_noise
       n_freqs: 4097
+      mask:                          # optional; default: the mask of filtering
+        type: radius
+        radius: 3.5                  # arcmin
+      filters:                       # optional: filters of the inverse spectra, not of the TOD
+        - type: bandpass             # lowpass | highpass | bandpass, as in `filtering`
+          f_lower: 0.1               # Hz
+          f_upper: 30
+          order: 2
+
+    gls:                             # arguments of gls_map
       residual_norm: plain
       tol: 1.0e-3
       maxiter: 300
@@ -82,7 +93,8 @@ from .._units import Kelvin, _to_unit
 from ..io import read_scan
 from ..io.map import _check_suffix
 from ..map import MapGeometry
-from ..processing import FilteringConfig
+from ..processing import FilteringConfig, FrequencyFilter
+from ..processing.config import Mask
 from ..tod import Scan, ScanSpec
 
 
@@ -100,17 +112,34 @@ def _required(section: Any, key: str, name: str, yaml_path: str | Path) -> Any:
     return section[key]
 
 
-class GLSConfig(BaseModel):
+class NoiseConfig(BaseModel):
     """
-    The solver (arguments of ``gls_map``).
+    The noise model (arguments of ``estimate_inverse_noise``).
 
-    ``workers`` follows the convention of ``gls_map``: None is one thread, -1 is all the
-    cores. ``background``, ``initial_map`` and ``cross_spectra`` are not exposed yet.
+    ``filters`` are applied to the inverse noise spectra, not to the TOD: the same
+    ``lowpass``, ``highpass`` and ``bandpass`` steps as in ``filtering``, with the same
+    keys. ``mask`` leaves samples out of the spectra, with the same keys as
+    ``filtering.mask``; without it the mask of ``filtering`` is used. ``background``
+    and ``cross_spectra`` are not exposed yet; the threads are ``gls.workers``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     n_freqs: int = Field(default=4097, ge=2)
+    filters: list[FrequencyFilter] = Field(default_factory=list)
+    mask: Mask | None = None
+
+
+class GLSConfig(BaseModel):
+    """
+    The solver (arguments of ``gls_map``).
+
+    ``workers`` follows the convention of ``gls_map``: None is one thread, -1 is all the
+    cores; ``estimate_inverse_noise`` uses it too. ``initial_map`` is not exposed yet.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     residual_norm: ResidualNorm = "plain"
     tol: float = Field(default=1e-3, gt=0)
     maxiter: int = Field(default=300, gt=0)
@@ -191,14 +220,18 @@ class RunConfig(BaseModel):
     geometry: MapGeometry
     calibration: CalibrationConfig | None = None
     filtering: FilteringConfig = Field(default_factory=FilteringConfig)
+    noise: NoiseConfig = Field(default_factory=NoiseConfig)
     gls: GLSConfig = Field(default_factory=GLSConfig)
+    # text of the YAML file, written in the FITS map (None if not built from a file)
+    yaml_text: str | None = None
 
     @classmethod
     def from_yaml(cls: type[RunConfig], path: str | Path) -> RunConfig:
         YAML_FOLDER = Path(path).expanduser().resolve().parent
 
         with open(path, "r") as yaml_file:
-            raw = yaml.safe_load(yaml_file)
+            yaml_text = yaml_file.read()
+            raw = yaml.safe_load(yaml_text)
             if raw is None:
                 raise ValueError(
                     f"{path} is empty: it needs at least the `scan` and `output` sections."
@@ -208,6 +241,9 @@ class RunConfig(BaseModel):
                 raise ValueError(
                     f"{path}: the `cleaning` section is now called `filtering`."
                 )
+
+            if isinstance(raw.get("gls"), dict) and "n_freqs" in raw["gls"]:
+                raise ValueError(f"{path}: `gls.n_freqs` is now `noise.n_freqs`.")
 
             raw_scan = _required(raw, "scan", "scan", path)
             raw_specs = _required(raw_scan, "tod_dirs", "scan.tod_dirs", path)
@@ -254,6 +290,10 @@ class RunConfig(BaseModel):
             raw_filtering = raw.get("filtering") or {}
             filtering = FilteringConfig(**raw_filtering)
 
+            # the `noise` field is optional (uses the default values)
+            raw_noise = raw.get("noise") or {}
+            noise = NoiseConfig(**raw_noise)
+
             # the `gls` field is optional (uses the default values)
             raw_gls = raw.get("gls") or {}
             gls = GLSConfig(**raw_gls)
@@ -295,6 +335,8 @@ class RunConfig(BaseModel):
             geometry=geometry,
             calibration=calibration,
             filtering=filtering,
+            noise=noise,
             gls=gls,
             output=output,
+            yaml_text=yaml_text,
         )

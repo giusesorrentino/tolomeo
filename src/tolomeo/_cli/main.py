@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     # TODO: qui deve esserci anche:
     #   * output già esistente con overwrite: false
     #   * ... idk ?
-    
+
     # if args.validate:
     #     n_samples, n_det = config.scan.tod.signal.shape
     #     print(

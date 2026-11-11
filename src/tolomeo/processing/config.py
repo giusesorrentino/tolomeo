@@ -13,6 +13,7 @@ __all__ = [
     "CommonMode",
     "EdgeMask",
     "FilteringConfig",
+    "FrequencyFilter",
     "Highpass",
     "Lowpass",
     "Mask",
@@ -58,8 +59,11 @@ class CommonMode(BaseStep):
 
     Attributes
     ----------
-    method : {"median", "mean"}
-        How the common mode is estimated.
+    method : {"median", "mean", "corr"}
+        How the common mode is estimated. ``"median"`` and ``"mean"`` subtract the
+        same value from every detector. ``"corr"`` gives every detector its own common
+        mode, the mean of the other detectors weighted by their correlation with it,
+        times a gain fitted on that detector; put it after the baseline.
         Default ``"median"``.
     """
 
@@ -237,6 +241,19 @@ Step = Annotated[
     Field(discriminator="type"),
 ]
 """Any cleaning step; the ``type`` field says which one."""
+
+
+FrequencyFilter = Annotated[
+    Lowpass | Highpass | Bandpass,
+    Field(discriminator="type"),
+]
+"""
+A frequency filter; the ``type`` field says which one.
+
+The filters that :func:`~tolomeo.mapmaking.estimate_inverse_noise` applies to the
+inverse noise spectra (not to the TOD). Same syntax as the steps of
+:class:`FilteringConfig`.
+"""
 
 
 class RadiusMask(BaseModel):

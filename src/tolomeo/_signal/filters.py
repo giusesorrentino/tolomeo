@@ -6,7 +6,7 @@ from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.signal import butter, sosfiltfilt
+from scipy.signal import butter, freqz_sos, sosfiltfilt
 
 __all__ = ["bandpass", "highpass", "lowpass"]
 
@@ -30,6 +30,45 @@ def _apply(
     sos = butter(order, fc, btype=btype, fs=sample_rate, output="sos")
     # forward and backward: zero phase, so the signal is not delayed
     return sosfiltfilt(sos, data, axis=axis)
+
+
+def _gain(
+    freqs: NDArray[np.float64],
+    fc: float | tuple[float, float],
+    sample_rate: float,
+    order: int,
+    btype: Literal["lowpass", "highpass", "bandpass"],
+) -> NDArray[np.float64]:
+    """
+    Gain of the forward-backward filter (as ``sosfiltfilt`` applies it) at ``freqs``.
+
+    TODO: to implement.
+
+    Parameters
+    ----------
+    freqs : :class:`~numpy.ndarray` of float64
+        Frequencies in Hz, for example the bins of the inverse noise spectra.
+        Shape ``(n_freqs,)``.
+    fc, sample_rate, order, btype
+        As in :func:`_design`.
+
+    Returns
+    -------
+    :class:`~numpy.ndarray` of float64
+        ``|H(f)|^2``: real, between 0 and 1, 0.5 at the cutoff.
+        Shape ``(n_freqs,)``.
+    """
+    sos = butter(order, fc, btype=btype, fs=sample_rate, output="sos")
+    _, h = freqz_sos(sos, worN=freqs, fs=sample_rate)
+    # 1. the filter: `_design(fc, sample_rate, order, btype)`.
+    # 2. the complex response of one pass, H(f), at exactly `freqs`:
+    #    `scipy.signal.freqz_sos` with `worN=freqs` and `fs=sample_rate` (with an array as
+    #    `worN` it computes the response at those frequencies, in the units of `fs`). It
+    #    returns the frequencies and H.
+    # 3. return the modulus squared of H: sosfiltfilt applies H forward and H* backward,
+    #    so its gain is H * H* = |H|^2 (the same as the response of sosfiltfilt to an
+    #    impulse).
+    return np.abs(h) ** 2
 
 
 def lowpass(

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from ..io.skydip import _read_dip, _run_on_files
+from ..io.skydip import _read_skydip, _run_on_files
 from ..tod import Scan
 
 __all__ = ["calibrate", "skydip_responsivity"]
@@ -23,7 +23,7 @@ def _file_responsivity(
     cannot be read (see :func:`~tolomeo.io.skydip.read_skydip`) or if ``T_sky`` does
     not change. Shape ``(n_det,)``.
     """
-    skydip = _read_dip(file, columns)
+    skydip = _read_skydip(file, columns)
     if skydip is None:
         return None
 
@@ -86,7 +86,7 @@ def skydip_responsivity(
     """
     slopes = _run_on_files(gain_dir, detector_ids, _file_responsivity, T_atm, tau_atm)
 
-    return np.mean(slopes, axis=0)
+    return np.median(slopes, axis=0)
 
 
 def calibrate(
@@ -152,5 +152,5 @@ def calibrate(
         signal /= transmission[:, None]
 
     return scan.model_copy(
-        update={"tod": scan.tod.model_copy(update={"signal": signal})}
+        update={"tod": scan.tod.model_copy(update={"signal": signal, "unit": "K"})}
     )

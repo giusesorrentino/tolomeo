@@ -57,7 +57,7 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
     FileNotFoundError
         If there is no usable file.
     """
-    return _run_on_files(gain_dir, detector_ids, _read_dip)
+    return _run_on_files(gain_dir, detector_ids, _read_skydip)
 
 
 def _run_on_files(
@@ -69,8 +69,8 @@ def _run_on_files(
     """
     Run ``func(file, columns, *args)`` on every skydip file, in a pool of processes.
 
-    It is what :func:`read_skydip` does with ``func=_read_dip``; the calibration passes
-    a function that also fits the file, so that the signal stays in the worker.
+    It is what :func:`read_skydip` does with ``func=_read_skydip``; the calibration
+    passes a function that also fits the file, so that the signal stays in the worker.
 
     Parameters
     ----------
@@ -135,7 +135,7 @@ def _run_on_files(
     return used
 
 
-def _read_dip(file: Path, columns: list[str]) -> SkyDip | None:
+def _read_skydip(file: Path, columns: list[str]) -> SkyDip | None:
     """
     Read one skydip FITS file.
 
