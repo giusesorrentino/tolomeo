@@ -12,7 +12,7 @@ RUN_CMD = ["uv", "run", "--active"]
 
 
 @click.command(context_settings={"ignore_unknown_options": True})
-@click.argument("path", default="python/tolomeo", required=False)
+@click.argument("path", default="src/tolomeo", required=False)
 @click.option("--fix", is_flag=True, default=False, help="Auto-fix fixable lint errors")
 @click.option(
     "--unsafe-fixes", is_flag=True, default=False, help="Auto-fix hidden lint errors"
@@ -41,14 +41,14 @@ def lint(path, fix, unsafe_fixes):
         raise click.BadParameter(f"Path '{path}' does not exist.")
 
     print(f"✨ Linting and formatting code in '{path}' with Ruff...")
-    check_cmd = ["uvx", "ruff", "check", str(target)]
+    check_cmd = RUN_CMD + ["ruff", "check", str(target)]
 
     if fix:
         check_cmd += ["--fix"]
     if unsafe_fixes:
         check_cmd += ["--unsafe-fixes"]
 
-    format_cmd = ["uvx", "ruff", "format", str(target)]
+    format_cmd = RUN_CMD + ["ruff", "format", str(target)]
 
     try:
         spin.util.run(check_cmd)
@@ -56,61 +56,6 @@ def lint(path, fix, unsafe_fixes):
         pass
 
     spin.util.run(format_cmd)
-
-
-@click.command()
-@click.option(
-    "--install/--no-install",
-    default=True,
-    help="Install the package in editable mode after building.",
-)
-@click.option(
-    "-r",
-    "--release",
-    is_flag=True,
-    default=False,
-    help="Build in release mode with optimizations.",
-)
-def build(install, release):
-    """🔧 Build the package (and install it in editable mode by default).
-
-    \b
-    Examples:
-
-    \b
-    Build and install in editable mode (default):
-    $ spin build
-
-    \b
-    Build only (wheel generation), without installing:
-    $ spin build --no-install
-
-    \b
-    Build in release mode (optimized Rust build):
-    $ spin build --release
-    """
-    extra_flags = ["--release"] if release else []
-
-    # Costruiamo la lista degli argomenti base per maturin
-    if release:
-            current_rustflags = os.environ.get("RUSTFLAGS", "")
-            os.environ["RUSTFLAGS"] = f"{current_rustflags} -C target-cpu=native".strip()
-
-    spin.util.run(["cargo", "clean"])
-
-    for file in (ROOT / "python" / "tolomeo").glob("*.so"):
-        file.unlink()
-    for file in (ROOT / "python" / "tolomeo").glob("*.pyd"):
-        file.unlink()
-
-    print("✨ Cleaned all build artifacts!")
-
-    if install:
-        print("🔨 Building and installing in editable mode via maturin...")
-        spin.util.run(["uv", "run", "maturin", "develop"] + extra_flags)
-    else:
-        print("🔨 Building wheel only via maturin (no installation)...")
-        spin.util.run(["uv", "run", "maturin", "build"] + extra_flags)
 
 
 @click.command()
