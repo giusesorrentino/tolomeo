@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .._lib.units import Arcsec, Radians, _to_unit
 from .._typing import Frame, Projection
+from ..coords.transforms import radec2xy
+from ..tod import Scan
 
 __all__ = ["MapGeometry"]
 
@@ -125,4 +127,100 @@ class MapGeometry(BaseModel):
             pixel_size=_to_unit(beam_fwhm, u.arcsec) / pixels_per_beam,
             center=center,
             projection=projection,
+        )
+
+    @classmethod
+    def from_scan(
+        cls,
+        scan: Scan,
+        *,
+        pixel_size: float | str = 3.0,
+        projection: Projection = "sin",
+        frame: Frame = "radec",
+        center: tuple[Radians, Radians] | None = None,
+        margin: int = 10,
+    ) -> MapGeometry:
+        """
+        Geometry that covers every detector of ``scan``, centred on ``center``.
+
+        The valid samples of the boresight (``scan.tod.flags`` True and finite
+        coordinates) are projected on the plane of ``projection`` around ``center``.
+        The half-size of the map along each axis is the largest distance of the
+        boresight from the centre plus the largest offset of a detector from the
+        boresight, so the whole array fits at every sample. The offsets rotate with
+        the parallactic angle, so their largest radius is used in both directions.
+        ``margin`` pixels are then added on each side.
+
+        Parameters
+        ----------
+        scan : :class:`~tolomeo.tod.Scan`
+            Scan to cover.
+        pixel_size : float, str or :class:`~astropy.units.Quantity`
+            Side of a pixel. A number is in arcsec; a string with a unit
+            (``"4 arcsec"``) or a quantity is converted.
+            Default ``3.0``.
+        projection : {"sin", "tan", "zea"}
+            Projection of the map. Default ``"sin"``.
+        frame : {"radec", "azel"}
+            Coordinates of the map. ``"azel"`` is not supported by the mapmaker
+            yet. Default ``"radec"``.
+        center : tuple of float, optional
+            Projection centre, in radians: ``(ra, dec)`` for ``"radec"``,
+            ``(az, el)`` for ``"azel"``. None means :attr:`~tolomeo.tod.Scan.center`
+            for ``"radec"``, and the circular mean of the azimuth and the mean of
+            the elevation of the valid samples for ``"azel"``.
+        margin : int
+            Pixels added on each side of the map. Default ``10``.
+
+        Returns
+        -------
+        :class:`MapGeometry`
+            ``nx`` and ``ny`` are even: the grid goes from ``-nx * pixel_size / 2``
+            to ``nx * pixel_size / 2``, so the centre falls on the corner shared by
+            the four central pixels.
+
+        Raises
+        ------
+        ValueError
+            If ``frame`` is not ``"radec"`` or ``"azel"``.
+        """
+        pix = np.deg2rad(_to_unit(pixel_size, u.arcsec) / 3600)
+        coords = scan.coordinates
+
+        # the frame only chooses the spherical coordinates; the projection is the same
+        if frame == "radec":
+            lon, lat = coords.ra, coords.dec
+        elif frame == "azel":
+            lon, lat = coords.az, coords.el
+        else:
+            raise ValueError(f"Unknown frame: {frame!r}")
+
+        ok = scan.tod.flags & np.isfinite(lon) & np.isfinite(lat)
+
+        if center is None:
+            if frame == "radec":
+                center = scan.center
+            else:
+                # circular mean: the azimuth wraps at 0/360 deg
+                center = (
+                    np.angle(np.mean(np.exp(1j * lon[ok]))) % (2 * np.pi),
+                    np.mean(lat[ok]),
+                )
+
+        lon0, lat0 = center
+        x, y = radec2xy(lon[ok], lat[ok], lon0, lat0, projection=projection)
+        r_array = np.hypot(scan.offsets["lon"], scan.offsets["lat"]).max()
+        half_x = np.abs(x).max() + r_array
+        half_y = np.abs(y).max() + r_array
+
+        nx = 2 * (int(np.ceil(half_x / pix)) + margin)
+        ny = 2 * (int(np.ceil(half_y / pix)) + margin)
+
+        return cls(
+            nx=nx,
+            ny=ny,
+            pixel_size=pixel_size,
+            center=center,
+            projection=projection,
+            frame=frame,
         )

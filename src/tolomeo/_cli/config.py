@@ -328,7 +328,22 @@ class RunConfig(BaseModel):
 
             raw_geometry["center"] = center
 
-            geometry = MapGeometry(**raw_geometry)
+            # nx and ny: both numbers, or both missing / `auto` (fitted to the scan)
+            nx = raw_geometry.pop("nx", None)
+            ny = raw_geometry.pop("ny", None)
+            nx_auto, ny_auto = (v is None or str(v).lower() == "auto" for v in (nx, ny))
+
+            if nx_auto != ny_auto:
+                raise ValueError(
+                    f"{path}: `geometry.nx` and `geometry.ny` must be both numbers "
+                    "or both `auto`."
+                )
+
+            if nx_auto:
+                geometry = MapGeometry.from_scan(scan, **raw_geometry)
+            else:
+                raw_geometry.pop("margin", None)  # used only when nx and ny are auto
+                geometry = MapGeometry(nx=nx, ny=ny, **raw_geometry)
 
         return cls(
             scan=scan,
