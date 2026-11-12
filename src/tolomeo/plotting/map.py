@@ -16,7 +16,12 @@ __all__ = ["plot_map"]
 
 
 STYLE_FILE = Path(__file__).resolve().parent / "resources" / "default.mplstyle"
-CMB_RGB_FILE = Path(__file__).resolve().parent / "resources" / "Planck_Parchment_RGB.txt"
+CMB_RGB_FILE = (
+    Path(__file__).resolve().parent / "resources" / "Planck_Parchment_RGB.txt"
+)
+
+# levels of the contours of `plot_map`, as fractions of the peak of the pixels shown
+_CONTOUR_FRACTIONS = (0.1, 0.3, 0.5, 0.7, 0.9)
 
 
 @lru_cache(maxsize=1)
@@ -38,9 +43,11 @@ def plot_map(
     vmax: float | None = None,
     axes: PlotAxes = "offset",
     cmap: str = "afmhot",
+    label: str = "Temperature [K$_\\mathrm{{RJ}}$]",
     offset: Literal["median"] | float | None = "median",
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    contour: bool = False,
 ) -> Figure:
     """ci penso dopo al docstring"""
     if axes not in ("offset", "radec", "pixel"):
@@ -49,7 +56,9 @@ def plot_map(
     data = result.image
     hits = result.hits
     if not 0.0 <= min_hits_frac <= 1.0:
-        raise ValueError(f"`min_hits_frac` must be between 0 and 1, got {min_hits_frac}.")
+        raise ValueError(
+            f"`min_hits_frac` must be between 0 and 1, got {min_hits_frac}."
+        )
     # pixels shown: observed, with at least `min_hits_frac` of the largest number of hits
     # (the edges of the scan, with few samples, are very noisy)
     good = (hits > 0) & (hits >= min_hits_frac * hits.max())
@@ -116,6 +125,21 @@ def plot_map(
 
         im = ax.imshow(data, cmap=colormap, extent=extent, vmax=hi, vmin=lo)
 
+        # contours at fractions of the peak of the pixels shown (none if the peak is not
+        # positive). Same extent and origin as imshow, so the lines sit on the pixels;
+        # with "radec" both are drawn in pixel coordinates
+        if contour:
+            peak = np.nanmax(data[good])
+            if peak > 0:
+                ax.contour(
+                    np.ma.masked_invalid(data),
+                    levels=peak * np.asarray(_CONTOUR_FRACTIONS),
+                    colors="k",
+                    linewidths=0.6,
+                    extent=extent,
+                    origin="image",
+                )
+
         if axes == "radec":
             ax.coords[0].set_axislabel("RA")
             ax.coords[1].set_axislabel("Dec")
@@ -140,7 +164,7 @@ def plot_map(
         cax = make_axes_locatable(ax).append_axes(
             "right", size="5%", pad=0.1, axes_class=Axes
         )
-        cb = fig.colorbar(im, cax=cax)
+        cb = fig.colorbar(im, cax=cax, label=label)
         cb.ax.tick_params(direction="out")
 
         return fig
