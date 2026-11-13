@@ -303,7 +303,7 @@ class TemperatureNormalOperator:
         return r * self.inv_diag
 
 
-# Tests worth writing for this file (none needs Rust):
+# Tests worth writing for this file:
 #   * adjointness: <P x, y> == <x, P^T y> for random x, y (use a tiny layout);
 #   * A is symmetric and positive: <u, A v> == <A u, v> and <v, A v> > 0;
 #   * with all noise weights equal to 1, N^-1 is the identity, so A x is the

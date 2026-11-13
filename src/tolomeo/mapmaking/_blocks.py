@@ -89,11 +89,7 @@ class BlockLayout(BaseModel):
 
     @property
     def core_len(self) -> int:
-        """
-        Samples kept from each block (the core): ``n_freqs - 1``.
-
-        Called ``valid_len`` in Rust; here ``valid`` is the mask of the good samples.
-        """
+        """Samples kept from each block (the core): ``n_freqs - 1``."""
         return self.n_freqs - 1
 
     @property
@@ -138,7 +134,7 @@ class BlockLayout(BaseModel):
         )
 
 
-# Tests worth writing for this file (no Rust needed):
+# Tests worth writing for this file:
 #   * the cores of all blocks tile 0..n_samples exactly (concatenate them and compare);
 #   * read_end - read_start + left_pad <= block_len for every block;
 #   * a TOD shorter than one block, and one whose length is an exact multiple of core_len;

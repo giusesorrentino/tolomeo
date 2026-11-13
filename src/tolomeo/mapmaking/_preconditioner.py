@@ -9,8 +9,7 @@ noise weight of each detector: for every sample (flagged ones included, they sit
 virtual pixel) add ``lag_zero[det]`` to the pixel it points to. So ``diag[p]`` is the
 weighted number of samples that fall in pixel ``p``.
 
-``lag_zero`` has one value per detector. It is computed by ``_build_noise_model`` and passed in,
-so that the Python and Rust backends take the same inputs.
+``lag_zero`` has one value per detector; it is computed by ``estimate_inverse_noise``.
 """
 
 from concurrent.futures import ThreadPoolExecutor
