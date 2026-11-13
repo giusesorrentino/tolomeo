@@ -37,7 +37,7 @@ class PointingOperator:
     def __init__(self, pixels: NDArray[np.integer], layout: BlockLayout) -> None:
         """
         ``pixels`` has shape ``(n_samples, n_det)``, with the flagged samples already
-        on the virtual pixel (``_flags._redirect_flagged_samples``).
+        on the virtual pixel (see ``gls_map`` in ``_maps.py``).
 
         Builds ``pixels_by_det``, a copy of the pixels with shape ``(n_det, n_samples)``
         and dtype ``intp`` (the type NumPy wants for indexing), one contiguous row per

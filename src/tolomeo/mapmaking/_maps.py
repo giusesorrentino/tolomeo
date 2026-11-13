@@ -11,7 +11,6 @@ The other private modules of ``mapmaking``:
 
 ======================  ==========================================================
 ``_pointing.py``        the pixel of every sample of every detector
-``_flags.py``           the flagged samples and the virtual pixel
 ``_blocks.py``          sizes and positions of the blocks of the noise filter
 ``_noise.py``           the noise model and the filter ``N^-1`` built from it
 ``_operators.py``       ``P`` and ``P^T``, the right-hand side and ``A``
@@ -20,7 +19,7 @@ The other private modules of ``mapmaking``:
 ======================  ==========================================================
 
 Dependencies go one way: ``_blocks`` <- ``_noise`` <- ``_operators`` <- this
-module; ``_flags``, ``_preconditioner`` and ``_solver`` depend on nothing in the package.
+module; ``_preconditioner`` and ``_solver`` depend on nothing in the package.
 """
 
 import time
@@ -34,7 +33,6 @@ from .._typing import ResidualNorm
 from ..map import BinnedMapResult, MapGeometry, MapResult
 from ..tod import Scan
 from ._blocks import BlockLayout
-from ._flags import _count_flagged, _redirect_flagged_samples
 from ._noise import InverseNoise, InverseNoiseFilter
 from ._operators import PointingOperator, TemperatureNormalOperator, _build_rhs
 from ._pointing import _pointing_matrix
@@ -253,18 +251,18 @@ def gls_map(
         initial_map = np.divide(total, hits, out=np.zeros(n_pixels), where=hits > 0)
         print("[MAP] Starting the CG from the binned map")
 
-    # the flagged samples are not dropped: they point to one more unknown, the virtual
-    # pixel, so that the noise filter still sees a continuous time stream. A copy:
-    # `pixels` is still needed for the weight map
-    n_flagged = _count_flagged(valid)
+    # the flagged samples are not dropped: they still go through the noise filter, so
+    # that it sees a continuous time stream, but they point to one more unknown, the
+    # virtual pixel (index n_pixels), which is thrown away at the end
+    n_flagged = valid.size - np.count_nonzero(valid)
     print(
         f"[MAPMAKER] {n_flagged} of {valid.size} samples are flagged "
         f"({100.0 * n_flagged / valid.size:.1f}%): "
         "they are assigned to a virtual pixel"
     )
-    solver_pixels = _redirect_flagged_samples(
-        pixels=pixels, valid=valid, virtual_pixel=n_pixels
-    )
+    # np.where makes a copy (`pixels` is still needed for the weight map); the virtual
+    # pixel is a scalar of the dtype of `pixels`, so that the copy keeps that dtype
+    solver_pixels = np.where(valid, pixels, pixels.dtype.type(n_pixels))
     n_unknowns = n_pixels + 1
 
     print(
