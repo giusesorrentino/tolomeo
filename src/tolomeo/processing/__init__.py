@@ -8,7 +8,6 @@ from .config import (
     Highpass,
     Lowpass,
     RemoveModes,
-    RemoveSlope,
     RemoveSpline,
     Window,
 )
@@ -26,7 +25,6 @@ __all__ = [
     "Lowpass",
     "RadiusMask",
     "RemoveModes",
-    "RemoveSlope",
     "RemoveSpline",
     "SigmaClipMask",
     "Window",

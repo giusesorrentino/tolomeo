@@ -28,8 +28,7 @@ class RadiusMask(BaseModel):
     :class:`~tolomeo.processing.CommonMode`, :class:`~tolomeo.processing.Baseline` and
     :class:`~tolomeo.processing.RemoveSpline` to estimate what to subtract; the
     estimate is then subtracted from every sample. The distance is measured for every
-    detector, each at its own position. The window, the filters,
-    :class:`~tolomeo.processing.RemoveSlope` and
+    detector, each at its own position. The window, the filters and
     :class:`~tolomeo.processing.RemoveModes` do not use the mask.
 
     Attributes

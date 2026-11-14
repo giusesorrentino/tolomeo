@@ -13,34 +13,6 @@ from .splines import bspline_basis_from_knots
 logger = logging.getLogger("tolomeo")
 
 
-def remove_slope(D: NDArray[np.float64]) -> NDArray[np.float64]:
-    """
-    Subtract from each detector the line through its first and last sample.
-
-    Parameters
-    ----------
-    D : :class:`~numpy.ndarray`
-        TOD, one column per detector.
-        Shape ``(n_samples, n_det)``.
-
-    Returns
-    -------
-    :class:`~numpy.ndarray`
-        New array in which the first and the last sample of every detector
-        are 0. ``D`` is not modified.
-        Shape ``(n_samples, n_det)``.
-
-    Notes
-    -----
-    Only two samples define each line, so their noise ends up in the whole
-    TOD as a random offset and slope. To remove a drift from noisy data use
-    :func:`remove_baseline`, which is fitted on many samples.
-    """
-    # linspace between two rows gives, for every detector, the line that goes
-    # from its first to its last sample: shape (n_samples, n_det)
-    return D - np.linspace(D[0], D[-1], D.shape[0])
-
-
 def remove_baseline(
     D: NDArray[np.float64],
     t: NDArray[np.float64],

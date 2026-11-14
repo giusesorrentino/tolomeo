@@ -3,7 +3,6 @@
 # write them here.
 #
 # Available steps and their parameters:
-#   remove_slope        none
 #   common_mode         method: median (default), mean or corr    [per subscan]
 #   baseline            deg: degree of the polynomial (default 1) [per subscan]
 #   remove_spline       knot_spacing (in days), order (default 3) [per subscan]
@@ -18,8 +17,8 @@
 # a number and a unit that astropy reads: `fc: 0.05` and `fc: 50 mHz` are the same.
 
 # Optional mask that leaves the source out of the fits of common_mode, baseline
-# and remove_spline (not of remove_slope, window, filters or remove_modes). The
-# distance from the source is measured for every detector.
+# and remove_spline (not of window, filters or remove_modes). The distance from
+# the source is measured for every detector.
 #
 # mask:
 #   type: radius
@@ -43,7 +42,6 @@ steps:
   - type: baseline
     deg: 1
 
-  # - type: remove_slope
   # - type: window
   #   name: tukey
   #   kwargs: {alpha: 0.1}

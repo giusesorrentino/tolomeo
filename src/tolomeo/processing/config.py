@@ -17,7 +17,6 @@ __all__ = [
     "Highpass",
     "Lowpass",
     "RemoveModes",
-    "RemoveSlope",
     "RemoveSpline",
     "Step",
     "Window",
@@ -34,17 +33,6 @@ class BaseStep(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
-
-
-class RemoveSlope(BaseStep):
-    """
-    Subtract the line through the first and last sample of each detector.
-
-    :func:`~tolomeo._signal.detrend.remove_slope`; it has no parameters.
-    :class:`Baseline` is a better choice on noisy data.
-    """
-
-    type: Literal["remove_slope"] = "remove_slope"
 
 
 class CommonMode(BaseStep):
@@ -226,8 +214,7 @@ class RemoveModes(BaseStep):
 
 
 Step = Annotated[
-    RemoveSlope
-    | CommonMode
+    CommonMode
     | Baseline
     | RemoveSpline
     | Window

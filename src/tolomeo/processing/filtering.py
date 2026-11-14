@@ -26,7 +26,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .._lib.spectral import _check_nyquist, _narrow_passband
-from .._signal.detrend import remove_slope
 from .._signal.filters import bandpass, highpass, lowpass
 from ..map import MapGeometry
 from ..tod import Scan
@@ -45,7 +44,6 @@ from .config import (
     Highpass,
     Lowpass,
     RemoveModes,
-    RemoveSlope,
     RemoveSpline,
     Window,
 )
@@ -117,8 +115,6 @@ def _run_steps(scan, steps, background, overwrite_scan):
             logger.warning("Filtering without windowing is not recommended.")
 
         match step:
-            case RemoveSlope():
-                signal = remove_slope(signal)
             case CommonMode():
                 signal = _common_mode(signal, tod, step, background)
             case Baseline():
@@ -277,8 +273,8 @@ def process_tod(
     The steps of ``config.steps`` run in order. ``common_mode``, ``baseline`` and
     ``remove_spline`` work subscan by subscan and, with a mask, estimate what to
     subtract from the background samples only (it is then subtracted from every
-    sample). ``remove_slope``, ``window``, the filters and ``remove_modes`` work on
-    the whole TOD and ignore the mask.
+    sample). ``window``, the filters and ``remove_modes`` work on the whole TOD 
+    and ignore the mask.
     """
     if config is None:
         config = FilteringConfig()
