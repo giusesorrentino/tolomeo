@@ -53,7 +53,7 @@ class CommonMode(BaseStep):
     """
 
     type: Literal["common_mode"] = "common_mode"
-    method: CommonModeMethod = "median"
+    method: CommonModeMethod = "corr"
 
 
 class Baseline(BaseStep):
