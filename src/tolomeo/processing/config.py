@@ -200,7 +200,7 @@ class RemoveModes(BaseStep):
     """
     Removal of the strongest modes shared by the detectors (truncated SVD).
 
-    See :func:`~tolomeo._signal.decompose.decompose`.
+    See :func:`~tolomeo._signal.common_mode.decompose`.
 
     Attributes
     ----------
