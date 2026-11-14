@@ -50,7 +50,7 @@ class RadiusMask(BaseModel):
     type: Literal["radius"] = "radius"
     radius: Arcmin = Field(gt=0)  # implicit unit: arcmin
     center: Literal["auto"] | tuple[Degrees, Degrees] = "auto"  # implicit unit: deg
-    
+
     def build(self, scan: Scan, geometry: MapGeometry) -> NDArray[np.bool_]:
         """
         Samples that are far from the source, for every detector.
@@ -150,7 +150,7 @@ class SigmaClipMask(BaseModel):
     type: Literal["sigma_clip"] = "sigma_clip"
     sigma: float = Field(default=6.0, gt=0)
     maxiters: int = Field(default=10, ge=1)
-    
+
     def build(self, scan: Scan) -> NDArray[np.bool_]:
         """
         Samples that do not stand out of the noise, for every detector.
@@ -179,9 +179,15 @@ class SigmaClipMask(BaseModel):
         futures = []
 
         def mask_block(start: int, stop: int) -> None:
-            signal = np.where(tod.flags[start:stop, None], tod.signal[start:stop], np.nan)
+            signal = np.where(
+                tod.flags[start:stop, None], tod.signal[start:stop], np.nan
+            )
             clipped = sigma_clip(
-                signal, sigma=self.sigma, maxiters=self.maxiters, axis=0, stdfunc="mad_std"
+                signal,
+                sigma=self.sigma,
+                maxiters=self.maxiters,
+                axis=0,
+                stdfunc="mad_std",
             )
             background[start:stop] = ~clipped.mask
 
@@ -220,7 +226,7 @@ class EdgeMask(BaseModel):
 
     type: Literal["edges"] = "edges"
     fraction: float = Field(default=0.1, gt=0, lt=0.5)
-    
+
     def build(self, scan: Scan) -> NDArray[np.bool_]:
         """
         Samples at the two ends of every subscan.
