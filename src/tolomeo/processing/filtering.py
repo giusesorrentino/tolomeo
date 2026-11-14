@@ -185,14 +185,11 @@ def clean_subscans(
     overwrite_scan: bool = False,
 ) -> Scan:
     """
-    Remove the common mode and the baseline from every subscan.
+    Remove the baseline first and then the common mode from every subscan.
 
     The two steps are applied subscan by subscan, never on the whole TOD:
     every subscan has its own offset, and between two subscans there is a gap
     of several seconds, so the signal is not continuous across them.
-
-    The common mode is removed first, because the baseline of each detector
-    is estimated on what is left after that.
 
     Parameters
     ----------
@@ -221,7 +218,7 @@ def clean_subscans(
         always a new array, even when both steps are skipped, so the caller
         can modify it in place.
     """
-    steps = [s for s in (common_mode, baseline) if s is not None]
+    steps = [s for s in (baseline, common_mode) if s is not None]
     return _run_steps(scan, steps, background, overwrite_scan)
 
 
