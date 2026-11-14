@@ -1,17 +1,15 @@
-import os
-import warnings
-from collections.abc import Callable, Sequence
-from concurrent.futures import ProcessPoolExecutor
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import numpy as np
 from astropy.io import fits
 from numpy.typing import NDArray
 
+from .._lib.parallel import _run_on_files
 from .scan import _read_angle
 
-__all__ = ["SkyDip", "read_skydip"]
+__all__ = ["SkyDip", "read_skydip", "read_skydip_file"]
 
 # a file with fewer valid samples is skipped (as in the skydip of mistral2roma)
 _MIN_SAMPLES = 20
@@ -57,103 +55,31 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
     FileNotFoundError
         If there is no usable file.
     """
-    return _run_on_files(gain_dir, detector_ids, _read_skydip)
+    return _run_on_files(gain_dir, detector_ids, read_skydip_file)
 
 
-def _run_on_files(
-    gain_dir: str | Path,
-    detector_ids: Sequence[int],
-    func: Callable[..., Any],
-    *args: Any,
-) -> list[Any]:
-    """
-    Run ``func(file, columns, *args)`` on every skydip file, in a pool of processes.
-
-    It is what :func:`read_skydip` does with ``func=_read_skydip``; the calibration
-    passes a function that also fits the file, so that the signal stays in the worker.
-
-    Parameters
-    ----------
-    gain_dir : str or :class:`~pathlib.Path`
-        Directory with the ``GAIN_CAL`` FITS files, or the path of a single FITS file.
-    detector_ids : sequence of int
-        Detectors to read. ``columns`` is their list of ``chp_000``-like names.
-    func : callable
-        A function defined at the top level of a module (it is sent to the workers).
-        It returns None for a file that has to be skipped.
-    *args
-        Further arguments of ``func``.
-
-    Returns
-    -------
-    list
-        The results of ``func`` that are not None, in the order of the file names.
-
-    Raises
-    ------
-    NotADirectoryError
-        If ``gain_dir`` is neither a directory nor a file.
-    FileNotFoundError
-        If every file is skipped.
-    """
-    gain_dir = Path(gain_dir).resolve()
-
-    if gain_dir.is_file():
-        # a single skydip, named explicitly: its extension is not checked
-        files = [gain_dir]
-    elif gain_dir.is_dir():
-        # sorting by name keeps the files in time order
-        files = sorted(gain_dir.glob("*.fit*", case_sensitive=False))
-    else:
-        raise NotADirectoryError(f"{gain_dir} is neither a directory nor a file.")
-
-    columns = [f"chp_{i:03d}" for i in detector_ids]
-
-    workers = os.cpu_count() or 1
-
-    with ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(func, file, columns, *args) for file in files]
-        results = [future.result() for future in futures]
-
-    # a file that cannot be used comes back as None
-    skipped = [file.name for file, result in zip(files, results) if result is None]
-    used = [result for result in results if result is not None]
-
-    if skipped:
-        # a warning and not a log: the logger of the package has a NullHandler;
-        # stacklevel 3 points at the caller of the public function
-        warnings.warn(
-            f"{len(skipped)} of {len(files)} skydip files skipped: "
-            f"{', '.join(skipped)}.",
-            RuntimeWarning,
-            stacklevel=3,
-        )
-
-    if not used:
-        raise FileNotFoundError(f"No usable skydip file in {gain_dir}.")
-
-    return used
-
-
-def _read_skydip(file: Path, columns: list[str]) -> SkyDip | None:
+def read_skydip_file(file: Path, detector_ids: Sequence[int]) -> SkyDip | None:
     """
     Read one skydip FITS file.
 
-    Runs in a worker process (see :func:`_run_on_files`).
+    :func:`read_skydip` runs it in a worker process for every file.
 
     Parameters
     ----------
     file : :class:`~pathlib.Path`
         The FITS file, with a ``"DATA TABLE"`` (elevation, flags) and a
         ``"PH TABLE"`` (one column per detector) of the same length.
-    columns : list of str
-        Detector columns to read, for example ``"chp_012"``, in the output order.
+    detector_ids : sequence of int
+        Detectors to read, in the output order. Their columns are ``chp_000``,
+        ``chp_001``, ... in the ``"PH TABLE"``.
 
     Returns
     -------
     :class:`SkyDip` or None
         None if the file has to be skipped (see :func:`read_skydip`).
     """
+    columns = [f"chp_{i:03d}" for i in detector_ids]
+
     try:
         hdul = fits.open(file, memmap=False)
     except OSError:  # an empty file

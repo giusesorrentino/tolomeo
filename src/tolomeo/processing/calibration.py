@@ -6,14 +6,15 @@ from pathlib import Path
 import numpy as np
 from numpy.typing import NDArray
 
-from ..io.skydip import _read_skydip, _run_on_files
+from .._lib.parallel import _run_on_files
+from ..io.skydip import read_skydip_file
 from ..tod import Scan
 
 __all__ = ["calibrate", "skydip_responsivity"]
 
 
 def _file_responsivity(
-    file: Path, columns: list[str], T_atm: float, tau_atm: float
+    file: Path, detector_ids: Sequence[int], T_atm: float, tau_atm: float
 ) -> NDArray[np.float64] | None:
     """
     Responsivity of every detector from one skydip file, or None to skip the file.
@@ -23,7 +24,7 @@ def _file_responsivity(
     cannot be read (see :func:`~tolomeo.io.skydip.read_skydip`) or if ``T_sky`` does
     not change. Shape ``(n_det,)``.
     """
-    skydip = _read_skydip(file, columns)
+    skydip = read_skydip_file(file, detector_ids)
     if skydip is None:
         return None
 
