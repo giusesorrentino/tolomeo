@@ -50,9 +50,7 @@ def remove_baseline(
         New array with the polynomial removed. ``D`` is not modified.
         Shape ``(n_samples, n_det)``.
     """
-    # shape (n_samples, deg + 1): column i is t**i, with t mapped to [0, 1]
-    time_poly = _normalize(t)[:, None] ** np.arange(deg + 1)
-
+    time_poly = np.polynomial.legendre.legvander(2 * _normalize(t) - 1, deg)
     coeff = _masked_lstsq(time_poly, D, mask=mask)
 
     # evaluate each polynomial at every sample and subtract it
