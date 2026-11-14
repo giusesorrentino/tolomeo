@@ -1,4 +1,7 @@
+import warnings
 from collections.abc import Sequence
+from concurrent.futures import ProcessPoolExecutor
+from os import cpu_count
 from pathlib import Path
 from typing import NamedTuple
 
@@ -6,10 +9,9 @@ import numpy as np
 from astropy.io import fits
 from numpy.typing import NDArray
 
-from .._lib.parallel import _run_on_files
 from .scan import _read_angle
 
-__all__ = ["SkyDip", "read_skydip", "read_skydip_file"]
+__all__ = ["SkyDip", "read_skydip"]
 
 # a file with fewer valid samples is skipped (as in the skydip of mistral2roma)
 _MIN_SAMPLES = 20
@@ -55,14 +57,51 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
     FileNotFoundError
         If there is no usable file.
     """
-    return _run_on_files(gain_dir, detector_ids, read_skydip_file)
+    gain_dir = Path(gain_dir).resolve()
+
+    if gain_dir.is_file():
+        # a single skydip, named explicitly: its extension is not checked
+        files = [gain_dir]
+    elif gain_dir.is_dir():
+        # sorting by name keeps the files in time order
+        files = sorted(gain_dir.glob("*.fit*", case_sensitive=False))
+    else:
+        raise NotADirectoryError(f"{gain_dir} is neither a directory nor a file.")
+
+    workers = cpu_count() or 1
+
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(_read_skydip_file, file, detector_ids) for file in files
+        ]
+        results = [future.result() for future in futures]
+
+    # a file that cannot be used comes back as None
+    skipped = [file.name for file, result in zip(files, results) if result is None]
+    used = [result for result in results if result is not None]
+
+    if skipped:
+        # a warning and not a log: the logger of the package has a NullHandler;
+        # stacklevel 2 points at the caller of read_skydip
+        warnings.warn(
+            f"{len(skipped)} of {len(files)} skydip files skipped: "
+            f"{', '.join(skipped)}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    if not used:
+        raise FileNotFoundError(f"No usable skydip file in {gain_dir}.")
+
+    return used
 
 
-def read_skydip_file(file: Path, detector_ids: Sequence[int]) -> SkyDip | None:
+def _read_skydip_file(file: Path, detector_ids: Sequence[int]) -> SkyDip | None:
     """
-    Read one skydip FITS file.
+    Read one skydip FITS file, or return None if it has to be skipped.
 
-    :func:`read_skydip` runs it in a worker process for every file.
+    It runs in a worker process of :func:`read_skydip`, so it is defined at the top
+    level of the module: a function defined inside another cannot be sent to a process.
 
     Parameters
     ----------

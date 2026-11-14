@@ -1,68 +1,37 @@
 """Gain calibration of a ``Scan`` with a skydip."""
 
+import warnings
 from collections.abc import Sequence
-from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .._lib.parallel import _run_on_files
-from ..io.skydip import read_skydip_file
+from ..io.skydip import SkyDip
 from ..tod import Scan
 
 __all__ = ["calibrate", "skydip_responsivity"]
 
 
-def _file_responsivity(
-    file: Path, detector_ids: Sequence[int], T_atm: float, tau_atm: float
-) -> NDArray[np.float64] | None:
-    """
-    Responsivity of every detector from one skydip file, or None to skip the file.
-
-    Runs in a worker process of :func:`skydip_responsivity`: the signal of the file
-    stays in the worker and only ``n_det`` numbers go back. The file is skipped if it
-    cannot be read (see :func:`~tolomeo.io.skydip.read_skydip`) or if ``T_sky`` does
-    not change. Shape ``(n_det,)``.
-    """
-    skydip = read_skydip_file(file, detector_ids)
-    if skydip is None:
-        return None
-
-    airmass = 1 / np.sin(skydip.el)
-    T_sky = T_atm * (1 - np.exp(-tau_atm * airmass))  # shape (n_samples,)
-
-    if np.ptp(T_sky) < 1e-6:
-        return None
-
-    # slope of the line of every detector at once, shape (n_det,)
-    return np.polyfit(T_sky, skydip.signal, 1)[0]
-
-
 def skydip_responsivity(
-    gain_dir: str | Path,
-    detector_ids: Sequence[int],
+    skydips: Sequence[SkyDip],
     *,
     T_atm: float = 267.0,
     tau_atm: float = 0.16,
 ) -> NDArray[np.float64]:
     """
-    Responsivity of every detector from the skydip files of a directory (or from a
-    single file).
+    Responsivity of every detector from skydips.
 
-    In each file the signal of a detector is fitted with a straight line against the
+    In each skydip the signal of a detector is fitted with a straight line against the
     temperature of the sky, ``T_sky = T_atm * (1 - exp(-tau_atm * airmass))`` with
     ``airmass = 1 / sin(el)``. The responsivity is the slope, and the result is its
-    mean over the files. The files are read and fitted in a pool of processes, so
-    that only ``n_det`` numbers per file are sent back (use
-    :func:`~tolomeo.io.skydip.read_skydip` to get the signal of the files).
+    median over the skydips.
 
     Parameters
     ----------
-    gain_dir : str or :class:`~pathlib.Path`
-        Directory with the ``GAIN_CAL`` FITS files, or the path of a single FITS file.
-    detector_ids : sequence of int
-        Detectors to use, for example ``scan.detector_ids``. The result is in this
-        order.
+    skydips : sequence of :class:`~tolomeo.io.skydip.SkyDip`
+        From :func:`~tolomeo.io.read_skydip`. The result is in the order of the
+        ``detector_ids`` given to it, which for :func:`calibrate` must be
+        ``scan.detector_ids``.
     T_atm : float
         Temperature of the atmosphere, in kelvin.
         Default ``267``.
@@ -78,15 +47,38 @@ def skydip_responsivity(
 
     Raises
     ------
-    NotADirectoryError
-        If ``gain_dir`` is neither a directory nor a file.
-    FileNotFoundError
-        If no file can be used. A file is skipped, with a warning that lists its
-        name, if it cannot be read (see :func:`~tolomeo.io.skydip.read_skydip`) or
-        if its ``T_sky`` does not change.
+    ValueError
+        If no skydip can be used. A skydip is skipped, with a warning that gives its
+        position in ``skydips``, if its ``T_sky`` does not change.
     """
-    slopes = _run_on_files(gain_dir, detector_ids, _file_responsivity, T_atm, tau_atm)
+    slopes = []
+    skipped = []
 
+    for k, skydip in enumerate(skydips):
+        airmass = 1 / np.sin(skydip.el)
+        T_sky = T_atm * (1 - np.exp(-tau_atm * airmass))  # shape (n_samples,)
+
+        # the elevation does not change: there is no line to fit
+        if np.ptp(T_sky) < 1e-6:
+            skipped.append(k)
+            continue
+
+        # slope of the line of every detector at once, shape (n_det,)
+        slopes.append(np.polyfit(T_sky, skydip.signal, 1)[0])
+
+    if skipped:
+        # a warning and not a log: the logger of the package has a NullHandler
+        warnings.warn(
+            f"{len(skipped)} of {len(skydips)} skydips skipped (positions {skipped}): "
+            "their T_sky does not change.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    if not slopes:
+        raise ValueError(f"No usable skydip among the {len(skydips)} given.")
+
+    # (n_skydips, n_det) -> (n_det,)
     return np.median(slopes, axis=0)
 
 

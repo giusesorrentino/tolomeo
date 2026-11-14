@@ -1,5 +1,3 @@
-"""``RunMapmaker``: the pipeline of the command line, from a ``RunConfig`` to a FITS map."""
-
 import logging
 import time
 from pathlib import Path
@@ -9,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.time import Time
 
-from ..io import write_map
+from ..io import read_skydip, write_map
 from ..map import MapGeometry, MapResult
 from ..mapmaking import InverseNoise, estimate_inverse_noise, gls_map
 from ..plotting import plot_map
@@ -110,7 +108,7 @@ class RunMapmaker:
         """
         Calibrate ``scan`` with the skydip of ``config.calibration``.
 
-        ``calibrate(scan, skydip_responsivity(...))``. Without a
+        ``read_skydip``, then ``skydip_responsivity`` and ``calibrate``. Without a
         ``calibration`` section it returns ``scan`` itself; otherwise a new scan, and
         ``config.scan`` keeps the raw signal.
         """
@@ -122,12 +120,13 @@ class RunMapmaker:
         t0 = time.perf_counter()
         print("[CALIBRATION] Starting the skydip calibration")
 
+        skydips = read_skydip(calibration.skydip_dir, scan.detector_ids)
         responsivity = skydip_responsivity(
-            calibration.skydip_dir,
-            scan.detector_ids,
+            skydips,
             T_atm=calibration.T_atm,
             tau_atm=calibration.tau_atm,
         )
+
         t1 = time.perf_counter()
         print(f"[CALIBRATION] Responsivity computed in {t1 - t0:.2f}s")
 
