@@ -11,8 +11,6 @@ The residual that stops the loop depends on ``residual_norm``:
 * ``"preconditioned"`` ``||M^-1 g|| / ||M^-1 b||`` (ROMA's ``itol = 2``)
 """
 
-from __future__ import annotations
-
 import time
 from typing import Protocol
 
@@ -20,11 +18,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .._typing import ResidualNorm
-
-# The true residual ``A x - b`` is recomputed from scratch every 30 iterations: the
-# recurrence ``g += tau * h`` used in between slowly drifts away from it, because the
-# rounding errors accumulate.
-_REPLACE_RESIDUAL_EVERY = 30
 
 
 class CGOperator(Protocol):
@@ -122,10 +115,6 @@ def _conjugate_gradient(
 
         x += tau * d
         g += tau * h
-
-        # the recurrence for g drifts away from the true residual: recompute it
-        if it % _REPLACE_RESIDUAL_EVERY == 0:
-            g = operator.project(x) - b
 
         # preconditioned residual, and the relative residual that is compared with tol
         h = operator.precondition(g)
