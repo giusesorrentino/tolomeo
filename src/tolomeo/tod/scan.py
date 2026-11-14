@@ -13,7 +13,7 @@ from .tod import TimeOrderedData
 
 __all__ = ["Scan", "ScanSpec"]
 
-_RADIAN_TO_ARCSEC = 180 * 3600 / np.pi
+_RADIAN_TO_ARCMIN = 180 * 60 / np.pi
 
 
 class ScanSpec(BaseModel):
@@ -114,7 +114,7 @@ class Scan(BaseModel):
     @property
     def scan_speed(self) -> float:
         """
-        Median speed of the boresight on the sky, in arcsec/s.
+        Median speed of the boresight on the sky, in arcmin/s.
 
         Computed subscan by subscan, from the good samples with a finite pointing;
         subscans with fewer than two such samples are skipped. Raise ``ValueError`` if
@@ -144,4 +144,4 @@ class Scan(BaseModel):
             raise ValueError("No valid subscan.")
 
         speed = np.concatenate(speed)
-        return np.median(speed) * _RADIAN_TO_ARCSEC
+        return np.median(speed) * _RADIAN_TO_ARCMIN
