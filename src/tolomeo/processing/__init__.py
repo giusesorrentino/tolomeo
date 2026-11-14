@@ -3,19 +3,17 @@ from .config import (
     Bandpass,
     Baseline,
     CommonMode,
-    EdgeMask,
     FilteringConfig,
     FrequencyFilter,
     Highpass,
     Lowpass,
-    RadiusMask,
     RemoveModes,
     RemoveSlope,
     RemoveSpline,
-    SigmaClipMask,
     Window,
 )
 from .filtering import clean_subscans, process_tod
+from .masks import EdgeMask, RadiusMask, SigmaClipMask
 
 __all__ = [
     "Bandpass",

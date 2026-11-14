@@ -39,7 +39,7 @@ Example::
         - type: common_mode
 
     noise:                           # arguments of estimate_inverse_noise
-      n_freqs: 4097
+      nperseg: 8192                  # samples per block (even), or auto
       mask:                          # optional; default: the mask of filtering
         type: radius
         radius: 3.5                  # arcmin
@@ -91,10 +91,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .._lib.units import Kelvin, _to_unit
 from .._typing import ResidualNorm
 from ..io import read_scan
-from ..io.map import _check_suffix
+from ..io.map import check_fits_suffix
 from ..map import MapGeometry
 from ..processing import FilteringConfig, FrequencyFilter
-from ..processing.config import Mask
+from ..processing.masks import Mask
 from ..tod import Scan, ScanSpec
 
 
@@ -116,6 +116,9 @@ class NoiseConfig(BaseModel):
     """
     The noise model (arguments of ``estimate_inverse_noise``).
 
+    ``nperseg`` is the number of samples in one block (even), or ``auto`` to choose it
+    from the segments of the TOD, the runs of good samples with no gap in time.
+
     ``filters`` are applied to the inverse noise spectra, not to the TOD: the same
     ``lowpass``, ``highpass`` and ``bandpass`` steps as in ``filtering``, with the same
     keys. ``mask`` leaves samples out of the spectra, with the same keys as
@@ -125,9 +128,25 @@ class NoiseConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    n_freqs: int = Field(default=4097, ge=2)
+    nperseg: int | None = Field(default=8192, ge=2)  # None: chosen automatically
     filters: list[FrequencyFilter] = Field(default_factory=list)
     mask: Mask | None = None
+
+    @field_validator("nperseg", mode="before")
+    @classmethod
+    def _auto_nperseg(cls, nperseg: Any) -> Any:
+        """Read ``auto`` (in any case) as None, the automatic choice."""
+        if isinstance(nperseg, str) and nperseg.strip().lower() == "auto":
+            return None
+        return nperseg
+
+    @field_validator("nperseg")
+    @classmethod
+    def _even_nperseg(cls, nperseg: int | None) -> int | None:
+        """Refuse an odd length: the blocks of the kernel have an even length."""
+        if nperseg is not None and nperseg % 2:
+            raise ValueError(f"`nperseg` must be even, got {nperseg}.")
+        return nperseg
 
 
 class GLSConfig(BaseModel):
@@ -204,7 +223,7 @@ class OutputConfig(BaseModel):
     @classmethod
     def _fits_suffix(cls, path: Path) -> Path:
         """Refuse a suffix that ``write_map`` would refuse, now and not after the run."""
-        _check_suffix(path)
+        check_fits_suffix(path)
         return path
 
 
@@ -242,8 +261,13 @@ class RunConfig(BaseModel):
                     f"{path}: the `cleaning` section is now called `filtering`."
                 )
 
-            if isinstance(raw.get("gls"), dict) and "n_freqs" in raw["gls"]:
-                raise ValueError(f"{path}: `gls.n_freqs` is now `noise.n_freqs`.")
+            # old keys: n_freqs is now nperseg = 2 * (n_freqs - 1), in `noise`
+            for section in ("gls", "noise"):
+                if isinstance(raw.get(section), dict) and "n_freqs" in raw[section]:
+                    raise ValueError(
+                        f"{path}: `{section}.n_freqs` is now `noise.nperseg`, "
+                        "with nperseg = 2 * (n_freqs - 1) (4097 -> 8192)."
+                    )
 
             raw_scan = _required(raw, "scan", "scan", path)
             raw_specs = _required(raw_scan, "tod_dirs", "scan.tod_dirs", path)

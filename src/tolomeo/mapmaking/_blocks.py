@@ -4,9 +4,10 @@ Block geometry of the overlap-save noise filter.
 Why blocks
 ----------
 ``N^-1`` is a convolution in time, i.e. a product in frequency. A whole TOD is far too
-long for one FFT, so it is cut in blocks of ``block_len = 2 * (n_freqs - 1)`` samples.
-Consecutive blocks start ``core_len = n_freqs - 1`` samples apart, so every sample is
-inside two blocks, but it is *kept* from one only: the "core" of that block.
+long for one FFT, so it is cut in blocks of ``block_len = nperseg`` samples, the length
+of the blocks of the noise estimate. Consecutive blocks start
+``core_len = nperseg // 2`` samples apart, so every sample is inside two blocks, but it
+is *kept* from one only: the "core" of that block.
 
 ::
 
@@ -61,22 +62,25 @@ class BlockLayout(BaseModel):
         Samples per detector.
     n_det : int
         Number of detectors.
-    n_freqs : int
-        Frequency bins of the inverse noise spectra (rows of ``inv_noiseps``).
+    nperseg : int
+        Samples in one block, even: the ``nperseg`` of the noise model
+        (:attr:`~tolomeo.mapmaking.InverseNoise.nperseg`).
     """
 
     model_config = ConfigDict(frozen=True)
 
     n_samples: int
     n_det: int
-    n_freqs: int
+    nperseg: int
 
     def model_post_init(self, context: Any, /) -> None:
         """Raise ``ValueError`` if a size cannot describe a TOD."""
-        # reject sizes that cannot describe a TOD; n_freqs >= 2 so that core_len,
-        # which is n_freqs - 1, is at least 1
-        if self.n_freqs < 2:
-            raise ValueError(f"`n_freqs` must be at least 2, got {self.n_freqs}")
+        # reject sizes that cannot describe a TOD; nperseg even and >= 2 so that
+        # core_len, which is nperseg // 2, is at least 1 and exactly half a block
+        if self.nperseg < 2 or self.nperseg % 2:
+            raise ValueError(
+                f"`nperseg` must be even and at least 2, got {self.nperseg}"
+            )
         if self.n_samples < 1:
             raise ValueError(f"`n_samples` must be at least 1, got {self.n_samples}")
         if self.n_det < 1:
@@ -84,13 +88,13 @@ class BlockLayout(BaseModel):
 
     @property
     def block_len(self) -> int:
-        """Length of each FFT block: ``2 * (n_freqs - 1)``."""
-        return 2 * (self.n_freqs - 1)
+        """Length of each FFT block: ``nperseg``."""
+        return self.nperseg
 
     @property
     def core_len(self) -> int:
-        """Samples kept from each block (the core): ``n_freqs - 1``."""
-        return self.n_freqs - 1
+        """Samples kept from each block (the core): ``nperseg // 2``."""
+        return self.nperseg // 2
 
     @property
     def padding(self) -> int:

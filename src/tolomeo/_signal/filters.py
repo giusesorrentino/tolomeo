@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.signal import butter, freqz_sos, sosfiltfilt
 
-__all__ = ["bandpass", "highpass", "lowpass"]
+__all__ = ["bandpass", "gain", "highpass", "lowpass"]
 
 
 def _apply(
@@ -32,7 +32,7 @@ def _apply(
     return sosfiltfilt(sos, data, axis=axis)
 
 
-def _gain(
+def gain(
     freqs: NDArray[np.float64],
     fc: float | tuple[float, float],
     sample_rate: float,

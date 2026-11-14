@@ -53,24 +53,26 @@ class RunMapmaker:
                 f"{out.path} already exists: set `output.overwrite: true` to replace it."
             )
 
-        header = self._header(self.config.scan)
         scan = self._calibrate(self.config.scan)
         scan = self._clean(scan, self.config.geometry)
         inv_noise = self._estimate_noise(scan)
+        # after the noise estimate: NPERSEG is the value used, also when it is automatic
+        header = self._header(self.config.scan, inv_noise)
         result = self._make_map(scan, self.config.geometry, inv_noise)
         self._save(result, header)
 
         return result
 
-    def _header(self, scan: Scan) -> dict:
+    def _header(self, scan: Scan, inv_noise: InverseNoise) -> dict:
         """
-        FITS keywords that describe the run, from ``scan`` (as read) and the config.
+        FITS keywords of the run, from ``scan``, ``inv_noise`` and the config.
 
         ``TELESCOP`` and ``INSTRUME`` (``scan.telescope`` and ``scan.instrument``, if not
         None), ``DATE-OBS`` and ``MJD-OBS`` (first sample), ``NDET``, ``CALIB`` and, with a
-        calibration, ``TATM`` and ``TAUATM``, then ``NFREQS``, ``GLSTOL``, ``MAXITER``
-        and ``MINHITS``. The keywords of ``config.output.header`` come last, so they
-        replace these if they have the same name.
+        calibration, ``TATM`` and ``TAUATM``, then ``NPERSEG`` (from ``inv_noise``, so
+        it is the value used also when ``noise.nperseg`` is ``auto``), ``GLSTOL``,
+        ``MAXITER`` and ``MINHITS``. The keywords of ``config.output.header`` come last,
+        so they replace these if they have the same name.
         """
         config = self.config
         mjd = float(np.nanmin(scan.tod.time))
@@ -95,7 +97,7 @@ class RunMapmaker:
                 "Divided by the transmission",
             )
 
-        header["NFREQS"] = (config.noise.n_freqs, "Bins of the noise spectra")
+        header["NPERSEG"] = (inv_noise.nperseg, "Samples per noise block")
         header["GLSTOL"] = (config.gls.tol, "Tolerance of the CG")
         header["MAXITER"] = (config.gls.maxiter, "Maximum CG iterations")
         if config.gls.min_hits_frac is not None:
@@ -163,15 +165,16 @@ class RunMapmaker:
         """
         ``estimate_inverse_noise(scan, ...)`` with the fields of ``config.noise``.
 
-        ``n_freqs``, ``filters`` and ``mask`` map one to one onto its arguments (same
-        names); without ``noise.mask`` the mask of ``config.filtering`` is used, so that
-        the source stays out of the spectra. The threads are ``config.gls.workers``.
+        ``nperseg``, ``filters`` and ``mask`` map one to one onto its arguments (same
+        names; ``nperseg`` None is the automatic choice). Without ``noise.mask`` the
+        mask of ``config.filtering`` is used, so that the source stays out of the
+        spectra. The threads are ``config.gls.workers``.
         """
         noise = self.config.noise
         mask = noise.mask if noise.mask is not None else self.config.filtering.mask
         return estimate_inverse_noise(
             scan=scan,
-            n_freqs=noise.n_freqs,
+            nperseg=noise.nperseg,
             filters=noise.filters,
             mask=mask,
             geometry=self.config.geometry,

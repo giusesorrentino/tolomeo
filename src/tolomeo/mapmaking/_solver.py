@@ -27,7 +27,7 @@ from .._typing import ResidualNorm
 _REPLACE_RESIDUAL_EVERY = 30
 
 
-class LinearOperator(Protocol):
+class CGOperator(Protocol):
     """What the CG needs from the problem."""
 
     def project(self, x: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -42,7 +42,7 @@ class LinearOperator(Protocol):
 def _conjugate_gradient(
     b: NDArray[np.float64],
     x: NDArray[np.float64],
-    operator: LinearOperator,
+    operator: CGOperator,
     residual_norm: ResidualNorm,
     tol: float,
     maxiter: int,
@@ -50,7 +50,7 @@ def _conjugate_gradient(
     """
     Solve ``A x = b``. ``x`` is the starting point and is updated **in place**.
 
-    ``operator`` gives ``A x`` and ``M^-1 r`` (see ``LinearOperator``). The loop stops
+    ``operator`` gives ``A x`` and ``M^-1 r`` (see ``CGOperator``). The loop stops
     when the relative residual (norm chosen with ``residual_norm``) is ``<= tol``, or
     after ``maxiter`` iterations.
 

@@ -30,7 +30,6 @@ from .._signal.detrend import remove_slope
 from .._signal.filters import bandpass, highpass, lowpass
 from ..map import MapGeometry
 from ..tod import Scan
-from ._mask import _build_mask
 from ._steps import (
     _baseline,
     _common_mode,
@@ -50,6 +49,7 @@ from .config import (
     RemoveSpline,
     Window,
 )
+from .masks import RadiusMask
 
 logger = logging.getLogger("tolomeo")
 
@@ -287,6 +287,8 @@ def process_tod(
     if config.mask is not None:
         if background is not None:
             raise ValueError("Give either `background` or `config.mask`, not both.")
-        background = _build_mask(scan, config.mask, geometry)
+
+        args = (scan, geometry) if isinstance(config.mask, RadiusMask) else (scan,)
+        background = config.mask.build(*args)
 
     return _run_steps(scan, config.steps, background, overwrite_scan)

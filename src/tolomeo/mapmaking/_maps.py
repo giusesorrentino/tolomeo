@@ -4,22 +4,23 @@ The maps of a scan: ``binned_map`` and ``gls_map``.
 ``binned_map`` is the mean of the samples of every pixel, with no noise weighting, for
 quick checks. ``gls_map`` is the generalized least squares (GLS) map: it builds the
 normal equations ``A m = b``, with ``A = P^T N^-1 P`` and ``b = P^T N^-1 d``
-(``_normal_equations``), and solves them by preconditioned conjugate gradient
-(``_solver._conjugate_gradient``). Both sum the samples of every pixel with ``_bin``.
+(``_operators._normal_equations``), and solves them by preconditioned conjugate
+gradient (``_solver._conjugate_gradient``). Both sum the samples of every pixel with
+``_bin``.
 
 The other private modules of ``mapmaking``:
 
-======================  ==========================================================
-``_pointing.py``        the pixel of every sample of every detector
-``_blocks.py``          sizes and positions of the blocks of the noise filter
-``_noise.py``           the noise model and the filter ``N^-1`` built from it
-``_operators.py``       ``P`` and ``P^T``, the right-hand side and ``A``
-``_preconditioner.py``  the diagonal preconditioner
-``_solver.py``          the conjugate gradient
-======================  ==========================================================
+==================  ==============================================================
+``_pointing.py``    the pixel of every sample of every detector
+``_blocks.py``      sizes and positions of the blocks of the noise filter
+``_noise.py``       the noise model, the inverse noise spectra
+``_operators.py``   ``P`` and ``P^T``, the filter ``N^-1``, the right-hand side,
+                    ``A`` and its diagonal preconditioner
+``_solver.py``      the conjugate gradient
+==================  ==============================================================
 
-Dependencies go one way: ``_blocks`` <- ``_noise`` <- ``_operators`` <- this
-module; ``_preconditioner`` and ``_solver`` depend on nothing in the package.
+Dependencies go one way: ``_blocks`` and ``_noise`` <- ``_operators`` <- this
+module; ``_pointing`` and ``_solver`` depend on nothing else in ``mapmaking``.
 """
 
 import time
@@ -32,11 +33,9 @@ from .._lib.parallel import _resolve_workers
 from .._typing import ResidualNorm
 from ..map import BinnedMapResult, MapGeometry, MapResult
 from ..tod import Scan
-from ._blocks import BlockLayout
-from ._noise import InverseNoise, InverseNoiseFilter
-from ._operators import PointingOperator, TemperatureNormalOperator, _build_rhs
+from ._noise import InverseNoise
+from ._operators import _normal_equations
 from ._pointing import _pointing_matrix
-from ._preconditioner import _build_diagonal_preconditioner
 from ._solver import _conjugate_gradient
 
 __all__ = ["binned_map", "gls_map"]
@@ -186,7 +185,7 @@ def gls_map(
 
     # the noise model must belong to this scan: one of another scan would give a wrong
     # map without any error
-    _check_inv_noise(scan, inv_noise)
+    inv_noise.check_scan(scan)
 
     # turn None / negative values into a number of threads, and reject 0: the same
     # number is used by the pointing and the CG
@@ -320,107 +319,6 @@ def gls_map(
         converged=converged,
         unit=scan.tod.unit,
     )
-
-
-def _check_inv_noise(scan: Scan, inv_noise: InverseNoise) -> None:
-    """
-    Refuse a noise model that does not belong to ``scan``.
-
-    A model of another scan would give a wrong map without any error: column ``j`` of
-    the spectra is used for column ``j`` of the TOD, and the bins of the spectra are at
-    ``k * sample_rate / block_len``.
-
-    Raises
-    ------
-    ValueError
-        If the detectors differ, also only in their order, or if the sampling
-        frequencies differ.
-    """
-    scan_ids = list(scan.detector_ids)
-    model_ids = list(inv_noise.detector_ids)
-
-    if len(model_ids) != len(scan_ids):
-        raise ValueError(
-            f"The noise model has {len(model_ids)} detectors and the scan "
-            f"{len(scan_ids)}: estimate it on this scan."
-        )
-
-    first = next(
-        (j for j, (a, b) in enumerate(zip(scan_ids, model_ids)) if a != b), None
-    )
-    if first is not None:
-        raise ValueError(
-            "The detectors of the noise model are not those of the scan, in the same "
-            f"order: at position {first} the model has {model_ids[first]} and the scan "
-            f"{scan_ids[first]}."
-        )
-
-    # both come from the median time step of a TOD: equal for the same scan
-    if not np.isclose(inv_noise.sample_rate, scan.tod.sample_rate, rtol=1e-6, atol=0.0):
-        raise ValueError(
-            f"The noise model was estimated at {inv_noise.sample_rate} Hz and the scan "
-            f"is sampled at {scan.tod.sample_rate} Hz."
-        )
-
-
-def _normal_equations(
-    tod: NDArray[np.float64],
-    pixels: NDArray[np.integer],
-    inv_noise: InverseNoise,
-    n_unknowns: int,
-    workers: int,
-) -> tuple[TemperatureNormalOperator, NDArray[np.float64]]:
-    """
-    The system ``A m = b`` of the GLS map.
-
-    Returns the operator ``A = P^T N^-1 P``, with its diagonal preconditioner (what the
-    CG needs, see ``_solver.LinearOperator``), and the right-hand side
-    ``b = P^T N^-1 d``.
-
-    ``tod`` and ``pixels`` are ``(n_samples, n_det)``. ``pixels`` already sends the
-    flagged samples to the virtual pixel, so the maps here have ``n_unknowns`` elements:
-    the pixels of the sky followed by the virtual pixel.
-    """
-    n_samples, n_det = tod.shape
-    layout = BlockLayout(n_samples=n_samples, n_det=n_det, n_freqs=inv_noise.n_freqs)
-
-    t0 = time.perf_counter()
-    pointing = PointingOperator(pixels=pixels, layout=layout)
-    noise_filter = InverseNoiseFilter.from_inv_noiseps(
-        inv_noiseps=inv_noise.inv_noiseps, det_pairs=inv_noise.det_pairs, layout=layout
-    )
-    b = _build_rhs(
-        tod=tod,
-        pointing=pointing,
-        noise_filter=noise_filter,
-        layout=layout,
-        n_unknowns=n_unknowns,
-        workers=workers,
-    )
-    print(f"[MAPMAKER] RHS vector constructed in {time.perf_counter() - t0:.2f}s")
-    del noise_filter  # the operator below builds its own
-
-    t1 = time.perf_counter()
-    diag = _build_diagonal_preconditioner(
-        pixels_by_det=pointing.pixels_by_det,
-        lag_zero=inv_noise.lag_zero,
-        n_unknowns=n_unknowns,
-        workers=workers,
-    )
-    print(
-        f"[MAPMAKER] Diagonal preconditioner built in {time.perf_counter() - t1:.2f}s"
-    )
-    del pointing
-
-    operator = TemperatureNormalOperator(
-        diag=diag,
-        layout=layout,
-        pixels=pixels,
-        inv_noiseps=inv_noise.inv_noiseps,
-        det_pairs=inv_noise.det_pairs,
-        workers=workers,
-    )
-    return operator, b
 
 
 def _bin(

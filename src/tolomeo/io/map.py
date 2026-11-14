@@ -8,12 +8,12 @@ from astropy.io import fits
 
 from ..map import MapGeometry, MapResult
 
-__all__ = ["read_map", "write_map"]
+__all__ = ["check_fits_suffix", "read_map", "write_map"]
 
 _SUFFIXES = (".fits", ".fit", ".fts", ".fits.gz", ".fit.gz", ".fts.gz")
 
 
-def _check_suffix(path: Path) -> None:
+def check_fits_suffix(path: Path) -> None:
     """Raise ``ValueError`` if ``path`` does not end with a FITS suffix (``_SUFFIXES``)."""
     if not path.name.lower().endswith(_SUFFIXES):
         raise ValueError(f"`path` must end with one of {_SUFFIXES}, got {path.name!r}.")
@@ -58,7 +58,7 @@ def write_map(
         Default ``False``.
     """
 
-    _check_suffix(Path(path))
+    check_fits_suffix(Path(path))
 
     # header shared by the image HDUs: the WCS and the keywords of the caller
     base = result.geometry.to_wcs().to_header()
@@ -129,7 +129,7 @@ def read_map(path: str | Path) -> MapResult:
     """
     path = Path(path).resolve()
 
-    _check_suffix(path)
+    check_fits_suffix(path)
 
     with fits.open(path) as hdul:
         data = hdul[0].data

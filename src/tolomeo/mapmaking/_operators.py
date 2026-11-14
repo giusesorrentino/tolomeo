@@ -1,6 +1,9 @@
 """
-Pointing operator ``P`` / ``P^T``, the right-hand side ``b = P^T N^-1 d`` and the
-normal operator ``A = P^T N^-1 P``.
+The normal equations ``A m = b`` of the GLS map, and the operators they are made of.
+
+The pointing operator ``P`` / ``P^T``, the noise filter ``N^-1`` on blocks, the
+right-hand side ``b = P^T N^-1 d``, the diagonal preconditioner and the normal operator
+``A = P^T N^-1 P``. ``_normal_equations`` builds them for ``gls_map``.
 
 The one loop that matters
 -------------------------
@@ -17,15 +20,19 @@ operator reads ``P x`` (the current map, read at the pointing pixels). That loop
 Maps here have ``n_unknowns`` elements: the sky pixels followed by the virtual pixel.
 """
 
+from __future__ import annotations
+
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.fft import irfft, rfft
 
 from ._blocks import BlockLayout, BlockWindow
-from ._noise import InverseNoiseFilter
+from ._noise import InverseNoise
 
 # rows (time samples) copied at once when PointingOperator transposes the pixels
 _TILE = 4096
@@ -118,6 +125,121 @@ class PointingOperator:
             pixels.ravel(), weights=values.ravel(), minlength=out_map.size
         )
         out_map += summed
+
+
+class InverseNoiseFilter:
+    """
+    ``N^-1`` as an operator on blocks.
+
+    A block holds ``nperseg`` samples of every detector, shape ``(n_det, nperseg)``;
+    the same length is used by the Welch estimate of the spectra:
+
+    1. real FFT of every detector -> ``n_freqs = nperseg // 2 + 1`` complex bins;
+    2. multiplication of every detector's spectrum by its own inverse spectrum;
+    3. inverse real FFT back to ``nperseg`` samples per detector.
+
+    With cross-spectra step 2 would mix the detectors: for every column ``i`` (the pair
+    ``(f, r)``) and every frequency ``k``,
+    ``out[f, k] += spectrum[r, k] * inv_noiseps[k, i]`` and, if ``f != r``,
+    ``out[r, k] += spectrum[f, k] * inv_noiseps[k, i]``.
+    """
+
+    def __init__(
+        self,
+        layout: BlockLayout,
+        weights: NDArray[np.float64],
+    ) -> None:
+        """
+        Keep the block layout and the weights.
+
+        Parameters
+        ----------
+        layout : :class:`~tolomeo.mapmaking._blocks.BlockLayout`
+            Sizes of the TOD and of the blocks.
+        weights : :class:`~numpy.ndarray` of float64
+            Inverse noise spectrum of every detector (see :meth:`from_inv_noiseps`).
+            Shape ``(n_det, n_freqs)``.
+        """
+        self.layout = layout
+        self.weights = weights  # (n_det, n_freqs)
+
+    @classmethod
+    def from_inv_noiseps(
+        cls,
+        inv_noiseps: NDArray[np.float64],
+        det_pairs: NDArray[np.integer],
+        layout: BlockLayout,
+    ) -> InverseNoiseFilter:
+        """
+        Build the filter from the arrays that ``gls_map`` passes to the kernel.
+
+        ``inv_noiseps`` is ``(n_freqs, n_cols)`` and ``det_pairs`` is
+        ``(n_cols, 2)``; only auto spectra are supported.
+        """
+        n_det = layout.n_det
+        n_freqs = inv_noiseps.shape[0]
+        weights = np.empty((n_det, n_freqs))
+        n_seen = np.zeros(n_det, dtype=int)  # how many columns claim each detector
+
+        # every column of inv_noiseps is the spectrum of the pair (f, r) = det_pairs[i]
+        for i, (f, r) in enumerate(det_pairs):
+            if f != r:
+                raise NotImplementedError(
+                    f"column {i} is a cross spectrum (detectors {f} and {r}): "
+                    "only auto spectra (j, j) are supported"
+                )
+            if f >= n_det:
+                raise ValueError(
+                    f"column {i} refers to detector {f}, but n_det = {n_det}"
+                )
+            weights[f] = inv_noiseps[:, i]
+            n_seen[f] += 1
+
+        # np.empty left the rows uninitialised: every detector must have been written
+        # once, otherwise a row would hold garbage (missing) or the last column wins
+        # (repeated)
+        if not np.all(n_seen == 1):
+            missing = np.flatnonzero(n_seen == 0).tolist()
+            repeated = np.flatnonzero(n_seen > 1).tolist()
+            raise ValueError(
+                f"Every detector needs exactly one auto spectrum: "
+                f"missing = {missing}, repeated = {repeated}"
+            )
+
+        return cls(
+            layout=layout,
+            weights=weights,
+        )
+
+    def filter_block(self, time_buf: NDArray[np.float64]) -> NDArray[np.float64]:
+        """
+        Apply ``N^-1`` to one block, shape ``(n_det, block_len)`` -> same shape.
+
+        Steps: ``scipy.fft.rfft`` along the time axis, multiplication by the weights,
+        ``scipy.fft.irfft(..., n=block_len)``.
+
+        * **Normalisation.** ``scipy.fft.irfft`` already divides by ``n``, so the
+          weights are used as they are. With all the weights equal to 1 the filter
+          returns its input.
+        * **The input buffer is overwritten** (``overwrite_x=True``, to save memory):
+          give a buffer that you own and do not use it afterwards.
+        * **One FFT worker.** The parallelism is across blocks (threads in
+          ``_filter_and_bin``); if every FFT also asked for all the cores, the threads
+          would compete for them.
+        """
+        # TODO: raise ValueError if time_buf.shape is not (n_det, block_len).
+
+        # spectrum of every detector: (n_det, block_len) -> (n_det, n_freqs), complex
+        freq_buf = rfft(time_buf, axis=-1, workers=1, overwrite_x=True)
+
+        # multiply each detector's spectrum by its own weights
+        freq_buf *= self.weights
+
+        # back to time: (n_det, n_freqs) -> (n_det, block_len). The length is given
+        # explicitly, so that it never depends on how irfft guesses it from n_freqs
+        return irfft(
+            freq_buf, n=time_buf.shape[1], axis=-1, workers=1, overwrite_x=True
+        )
 
 
 def _filter_and_bin(
@@ -241,11 +363,69 @@ def _build_rhs(
     )
 
 
+def _build_diagonal_preconditioner(
+    pixels_by_det: NDArray[np.integer],
+    lag_zero: NDArray[np.float64],
+    n_unknowns: int,
+    workers: int = 1,  # idk
+) -> NDArray[np.float64]:
+    """
+    ``diag`` of length ``n_unknowns`` (map pixels + the virtual pixel).
+
+    The preconditioner ``M`` is the diagonal of ``P^T N^-1 P`` approximated with the
+    zero-lag noise weight of each detector: for every sample (flagged ones included,
+    they sit in the virtual pixel) add ``lag_zero[det]`` to the pixel it points to. So
+    ``diag[p]`` is the weighted number of samples that fall in pixel ``p``. Applying
+    it, ``M^-1 r``, is the ``precondition`` method of ``TemperatureNormalOperator``.
+
+    ``lag_zero`` has one value per detector; it is computed by
+    ``estimate_inverse_noise``.
+
+    ``pixels_by_det`` has shape ``(n_det, n_samples)`` and dtype ``intp``: the pixel of
+    every sample, one row per detector (``PointingOperator.pixels_by_det``). Detector
+    major, so that the pixels of one detector are contiguous in memory and the loop
+    below reads them sequentially.
+    """
+    diag = np.zeros(n_unknowns)
+    n_det = pixels_by_det.shape[0]
+
+    def run_det(pixels_by_det: NDArray[np.integer], idet: int) -> NDArray[np.floating]:
+        """Contribution of detector ``idet`` to the diagonal, shape ``(n_unknowns,)``."""
+        local_diag = np.zeros(n_unknowns)
+        ids = pixels_by_det[idet]
+        counts = np.bincount(ids, minlength=n_unknowns)
+        local_diag += lag_zero[idet] * counts
+
+        return local_diag
+
+    futures = []
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for idet in range(n_det):
+            futures.append(executor.submit(run_det, pixels_by_det, idet))
+
+    for future in futures:
+        diag += future.result()
+
+    # for idet in range(n_det):
+    #     # the pixels hit by this detector, one per sample: a contiguous row
+    #     ids = pixels_by_det[idet]
+
+    #     # number of samples of this detector in each pixel. minlength makes the result
+    #     # always have n_unknowns elements, also when the last pixels (the virtual one
+    #     # among them) have no hit, so that it can be added to diag
+    #     counts = np.bincount(ids, minlength=n_unknowns)
+
+    #     # every sample of this detector weighs lag_zero[idet]
+    #     diag += lag_zero[idet] * counts
+
+    return diag
+
+
 class TemperatureNormalOperator:
     """
     ``A = P^T N^-1 P`` and its diagonal preconditioner.
 
-    This is the object the CG talks to; see ``_solver.LinearOperator``.
+    This is the object the CG talks to; see ``_solver.CGOperator``.
     """
 
     def __init__(
@@ -301,6 +481,66 @@ class TemperatureNormalOperator:
         """
         # one vectorised product by the precomputed 1 / diag, no loop
         return r * self.inv_diag
+
+
+def _normal_equations(
+    tod: NDArray[np.float64],
+    pixels: NDArray[np.integer],
+    inv_noise: InverseNoise,
+    n_unknowns: int,
+    workers: int,
+) -> tuple[TemperatureNormalOperator, NDArray[np.float64]]:
+    """
+    The system ``A m = b`` of the GLS map.
+
+    Returns the operator ``A = P^T N^-1 P``, with its diagonal preconditioner (what the
+    CG needs, see ``_solver.CGOperator``), and the right-hand side
+    ``b = P^T N^-1 d``.
+
+    ``tod`` and ``pixels`` are ``(n_samples, n_det)``. ``pixels`` already sends the
+    flagged samples to the virtual pixel, so the maps here have ``n_unknowns`` elements:
+    the pixels of the sky followed by the virtual pixel.
+    """
+    n_samples, n_det = tod.shape
+    layout = BlockLayout(n_samples=n_samples, n_det=n_det, nperseg=inv_noise.nperseg)
+
+    t0 = time.perf_counter()
+    pointing = PointingOperator(pixels=pixels, layout=layout)
+    noise_filter = InverseNoiseFilter.from_inv_noiseps(
+        inv_noiseps=inv_noise.inv_noiseps, det_pairs=inv_noise.det_pairs, layout=layout
+    )
+    b = _build_rhs(
+        tod=tod,
+        pointing=pointing,
+        noise_filter=noise_filter,
+        layout=layout,
+        n_unknowns=n_unknowns,
+        workers=workers,
+    )
+    print(f"[MAPMAKER] RHS vector constructed in {time.perf_counter() - t0:.2f}s")
+    del noise_filter  # the operator below builds its own
+
+    t1 = time.perf_counter()
+    diag = _build_diagonal_preconditioner(
+        pixels_by_det=pointing.pixels_by_det,
+        lag_zero=inv_noise.lag_zero,
+        n_unknowns=n_unknowns,
+        workers=workers,
+    )
+    print(
+        f"[MAPMAKER] Diagonal preconditioner built in {time.perf_counter() - t1:.2f}s"
+    )
+    del pointing
+
+    operator = TemperatureNormalOperator(
+        diag=diag,
+        layout=layout,
+        pixels=pixels,
+        inv_noiseps=inv_noise.inv_noiseps,
+        det_pairs=inv_noise.det_pairs,
+        workers=workers,
+    )
+    return operator, b
 
 
 # Tests worth writing for this file:
