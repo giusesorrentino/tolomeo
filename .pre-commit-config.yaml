@@ -83,15 +83,3 @@ repos:
     rev: 2026.08.14
     hooks:
       - id: sp-repo-review
-
-  - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: 'v22.1.8'
-    hooks:
-      - id: clang-format
-        files: \.(c|h)$
-
-  - repo: https://github.com/fortran-lang/fprettify
-    rev: v0.3.7
-    hooks:
-      - id: fprettify
-        args: ["--indent", "4", "--whitespace", "2"]
