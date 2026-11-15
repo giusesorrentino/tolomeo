@@ -212,7 +212,7 @@ def xy2latlon(
     if frame == "azel":
         x_rot, y_rot = rot(x, y, par_angle)
         lat = y_rot[None, :] + yO
-        lon = x_rot[None, :] - xO / np.cos(lat)
+        lon = x_rot[None, :] - xO
         return lat, lon
 
     raise NotImplementedError(f"Frame '{frame!r}' is not available.")
