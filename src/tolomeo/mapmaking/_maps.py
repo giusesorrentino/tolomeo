@@ -1,9 +1,10 @@
+import logging
 import time
-import warnings
 
 import numpy as np
 from numpy.typing import NDArray
 
+from .._lib.messages import _warn
 from .._lib.parallel import _resolve_workers
 from .._typing import ResidualNorm
 from ..map import BinnedMapResult, MapGeometry, MapResult
@@ -14,6 +15,8 @@ from ._pointing import _pointing_matrix
 from ._solver import _conjugate_gradient
 
 __all__ = ["binned_map", "gls_map"]
+
+logger = logging.getLogger(__name__)
 
 
 def binned_map(scan: Scan, geometry: MapGeometry) -> BinnedMapResult:
@@ -170,7 +173,7 @@ def gls_map(
     tod = scan.tod.signal
     n_samples, n_det = tod.shape
 
-    print(
+    logger.info(
         f"[POINTING] Projecting {n_samples} samples x {n_det} detectors on a "
         f"{geometry.nx}x{geometry.ny} "
         f"map ({geometry.projection}, pixel = {geometry.pixel_size:.2f} arcsec)"
@@ -185,7 +188,7 @@ def gls_map(
     dt = time.perf_counter() - t0
     n_out = int((~valid).sum())
 
-    print(
+    logger.info(
         f"[POINTING] {n_out} of {valid.size} samples fall outside the map "
         f"({100 * n_out / valid.size:.1f}%), "
         f"done in {dt:.2f}s"
@@ -212,7 +215,7 @@ def gls_map(
         # pixels is 0 where valid is False, so keep[pixels] is always a valid index
         valid &= keep[pixels]
         hits[~keep] = 0
-        print(
+        logger.info(
             f"[POINTING] min_hits_frac = {min_hits_frac}: {n_samp_drop} samples in "
             f"{n_pix_drop} pixels with fewer than {min_hits_frac * hits.max():.0f} hits "
             "are not used"
@@ -223,13 +226,13 @@ def gls_map(
     if initial_map is None:
         total = _bin(pixels, valid, n_pixels, values=tod)
         initial_map = np.divide(total, hits, out=np.zeros(n_pixels), where=hits > 0)
-        print("[MAP] Starting the CG from the binned map")
+        logger.info("[MAP] Starting the CG from the binned map")
 
     # the flagged samples are not dropped: they still go through the noise filter, so
     # that it sees a continuous time stream, but they point to one more unknown, the
     # virtual pixel (index n_pixels), which is thrown away at the end
     n_flagged = valid.size - np.count_nonzero(valid)
-    print(
+    logger.info(
         f"[MAPMAKER] {n_flagged} of {valid.size} samples are flagged "
         f"({100.0 * n_flagged / valid.size:.1f}%): "
         "they are assigned to a virtual pixel"
@@ -239,7 +242,7 @@ def gls_map(
     solver_pixels = np.where(valid, pixels, pixels.dtype.type(n_pixels))
     n_unknowns = n_pixels + 1
 
-    print(
+    logger.info(
         f"[MAPMAKER] Config: TOD size = {n_samples}, pixels = {n_pixels}, "
         f"detectors = {n_det}, workers = {workers}"
     )
@@ -252,10 +255,12 @@ def gls_map(
     x = np.zeros(n_unknowns)
     x[:n_pixels] = initial_map
 
-    print(f"[MAPMAKER] Launching CG solver (tol = {tol:.1e}, maxiter = {maxiter})")
+    logger.info(
+        f"[MAPMAKER] Launching CG solver (tol = {tol:.1e}, maxiter = {maxiter})"
+    )
     n_iter, residual = _conjugate_gradient(b, x, operator, residual_norm, tol, maxiter)
 
-    print(
+    logger.info(
         f"[MAPMAKER] Map-making completed in {time.perf_counter() - start_total:.2f}s "
         f"(steps: {n_iter}, final residual: {residual:.3e})"
     )
@@ -264,11 +269,10 @@ def gls_map(
     # (the large scales are the last to converge)
     converged = bool(residual <= tol)
     if not converged:
-        warnings.warn(
+        _warn(
             f"The conjugate gradient did not converge: residual {residual:.2e} > tol "
             f"{tol:.1e} after {n_iter} iterations. Increase `maxiter`.",
             RuntimeWarning,
-            stacklevel=2,
         )
 
     # weight map: for every pixel, the sum of the zero-lag weight of the detector of
@@ -277,7 +281,7 @@ def gls_map(
     weights = _bin(pixels, valid, n_pixels, det_weights=inv_noise.lag_zero)
 
     n_hit = int((hits > 0).sum())
-    print(
+    logger.info(
         f"[MAP] {n_hit} of {n_pixels} pixels have at least one hit "
         f"({100 * n_hit / n_pixels:.1f}%), max hits = {hits.max()}"
     )

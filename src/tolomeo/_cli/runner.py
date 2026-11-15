@@ -15,7 +15,7 @@ from ..processing import calibrate, process_tod, skydip_responsivity
 from ..tod import Scan
 from .config import RunConfig
 
-logger = logging.getLogger("tolomeo")
+logger = logging.getLogger(__name__)
 
 
 class RunMapmaker:
@@ -118,7 +118,7 @@ class RunMapmaker:
             return scan
 
         t0 = time.perf_counter()
-        print("[CALIBRATION] Starting the skydip calibration")
+        logger.info("[CALIBRATION] Starting the skydip calibration")
 
         skydips = read_skydip(calibration.skydip_dir, scan.detector_ids)
         responsivity = skydip_responsivity(
@@ -128,13 +128,13 @@ class RunMapmaker:
         )
 
         t1 = time.perf_counter()
-        print(f"[CALIBRATION] Responsivity computed in {t1 - t0:.2f}s")
+        logger.info(f"[CALIBRATION] Responsivity computed in {t1 - t0:.2f}s")
 
         tau_atm = calibration.tau_atm if calibration.correct_opacity else None
         scan = calibrate(scan, responsivity, tau_atm=tau_atm)
 
-        print(f"[CALIBRATION] TOD calibrated in {time.perf_counter() - t1:.2f}s")
-        print(f"[CALIBRATION] Completed in {time.perf_counter() - t0:.2f}s")
+        logger.info(f"[CALIBRATION] TOD calibrated in {time.perf_counter() - t1:.2f}s")
+        logger.info(f"[CALIBRATION] Completed in {time.perf_counter() - t0:.2f}s")
 
         return scan
 
@@ -146,7 +146,7 @@ class RunMapmaker:
         signal of ``scan`` is cleaned in place and the returned scan has the same arrays.
         """
         t0 = time.perf_counter()
-        print("[PROCESSING] Starting to process the TOD")
+        logger.info("[PROCESSING] Starting to process the TOD")
 
         scan = process_tod(
             scan=scan,
@@ -156,7 +156,9 @@ class RunMapmaker:
             geometry=geometry,
         )
 
-        print(f"[PROCESSING] Cleaning completed in {time.perf_counter() - t0:.2f}s")
+        logger.info(
+            f"[PROCESSING] Cleaning completed in {time.perf_counter() - t0:.2f}s"
+        )
 
         return scan
 
@@ -219,7 +221,7 @@ class RunMapmaker:
         t0 = time.perf_counter()
         output_path = Path(self.config.output.path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[OUTPUT] Writing the map to {output_path}")
+        logger.info(f"[OUTPUT] Writing the map to {output_path}")
 
         write_map(
             result=result,
@@ -229,7 +231,7 @@ class RunMapmaker:
             overwrite=self.config.output.overwrite,
         )
 
-        print(f"[OUTPUT] Map written in {time.perf_counter() - t0:.2f}s")
+        logger.info(f"[OUTPUT] Map written in {time.perf_counter() - t0:.2f}s")
 
         plot_path = self.config.output.plot
         if plot_path is not None:
@@ -240,4 +242,4 @@ class RunMapmaker:
             fig.savefig(plot_path, dpi=300, bbox_inches="tight")
             plt.close(fig)
 
-            print(f"[OUTPUT] Image written to {plot_path}")
+            logger.info(f"[OUTPUT] Image written to {plot_path}")

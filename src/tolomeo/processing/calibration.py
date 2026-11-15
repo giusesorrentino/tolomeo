@@ -1,11 +1,11 @@
 """Gain calibration of a ``Scan`` with a skydip."""
 
-import warnings
 from collections.abc import Sequence
 
 import numpy as np
 from numpy.typing import NDArray
 
+from .._lib.messages import _warn
 from ..io.skydip import SkyDip
 from ..tod import Scan
 
@@ -67,12 +67,10 @@ def skydip_responsivity(
         slopes.append(np.polyfit(T_sky, skydip.signal, 1)[0])
 
     if skipped:
-        # a warning and not a log: the logger of the package has a NullHandler
-        warnings.warn(
+        _warn(
             f"{len(skipped)} of {len(skydips)} skydips skipped (positions {skipped}): "
             "their T_sky does not change.",
             RuntimeWarning,
-            stacklevel=2,
         )
 
     if not slopes:

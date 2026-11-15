@@ -22,6 +22,7 @@ Maps here have ``n_unknowns`` elements: the sky pixels followed by the virtual p
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -33,6 +34,8 @@ from scipy.fft import irfft, rfft
 
 from ._blocks import BlockLayout, BlockWindow
 from ._noise import InverseNoise
+
+logger = logging.getLogger(__name__)
 
 # rows (time samples) copied at once when PointingOperator transposes the pixels
 _TILE = 4096
@@ -517,7 +520,7 @@ def _normal_equations(
         n_unknowns=n_unknowns,
         workers=workers,
     )
-    print(f"[MAPMAKER] RHS vector constructed in {time.perf_counter() - t0:.2f}s")
+    logger.info(f"[MAPMAKER] RHS vector constructed in {time.perf_counter() - t0:.2f}s")
     del noise_filter  # the operator below builds its own
 
     t1 = time.perf_counter()
@@ -527,7 +530,7 @@ def _normal_equations(
         n_unknowns=n_unknowns,
         workers=workers,
     )
-    print(
+    logger.info(
         f"[MAPMAKER] Diagonal preconditioner built in {time.perf_counter() - t1:.2f}s"
     )
     del pointing

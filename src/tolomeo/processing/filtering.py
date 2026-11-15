@@ -27,6 +27,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.signal import windows
 
+from .._lib.messages import _warn
 from .._lib.spectral import _check_nyquist, _narrow_passband
 from .._signal.common_mode import decompose, remove_common_mode
 from .._signal.detrend import remove_baseline, remove_spline
@@ -47,7 +48,7 @@ from .config import (
 )
 from .masks import RadiusMask
 
-logger = logging.getLogger("tolomeo")
+logger = logging.getLogger(__name__)
 
 __all__ = ["clean_subscans", "process_tod"]
 
@@ -215,7 +216,10 @@ def _run_steps(scan, steps, background, overwrite_scan):
         start = time.monotonic()
 
         if isinstance(step, (Lowpass, Highpass, Bandpass)) and not windowed:
-            logger.warning("Filtering without windowing is not recommended.")
+            _warn(
+                "Filtering without windowing is not recommended: put a `window` step "
+                "before the filters."
+            )
 
         match step:
             case CommonMode():

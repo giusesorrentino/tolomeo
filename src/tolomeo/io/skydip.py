@@ -1,4 +1,3 @@
-import warnings
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from os import cpu_count
@@ -9,6 +8,7 @@ import numpy as np
 from astropy.io import fits
 from numpy.typing import NDArray
 
+from .._lib.messages import _warn
 from .scan import _read_angle
 
 __all__ = ["SkyDip", "read_skydip"]
@@ -81,13 +81,10 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
     used = [result for result in results if result is not None]
 
     if skipped:
-        # a warning and not a log: the logger of the package has a NullHandler;
-        # stacklevel 2 points at the caller of read_skydip
-        warnings.warn(
+        _warn(
             f"{len(skipped)} of {len(files)} skydip files skipped: "
             f"{', '.join(skipped)}.",
             RuntimeWarning,
-            stacklevel=2,
         )
 
     if not used:

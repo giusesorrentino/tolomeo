@@ -1,16 +1,4 @@
-"""
-Preconditioned conjugate gradient (CG).
-
-It is Fletcher-Reeves CG on ``A x = b`` with a preconditioner ``M^-1``. The iterations are
-the same as in the Rust backend, so that a difference between the two means a bug and not
-a different formulation.
-
-The residual that stops the loop depends on ``residual_norm``:
-
-* ``"plain"``          ``||g|| / ||b||``        (ROMA's ``itol = 1``)
-* ``"preconditioned"`` ``||M^-1 g|| / ||M^-1 b||`` (ROMA's ``itol = 2``)
-"""
-
+import logging
 import time
 from typing import Protocol
 
@@ -18,6 +6,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .._typing import ResidualNorm
+
+logger = logging.getLogger(__name__)
 
 
 class CGOperator(Protocol):
@@ -58,9 +48,9 @@ def _conjugate_gradient(
     start_time = time.perf_counter()
     plain = residual_norm == "plain"
 
-    def print_total_time() -> None:
-        """Print the time since the start of the CG, as the Rust backend does."""
-        print(f"Total time was {time.perf_counter() - start_time:.5e} seconds.")
+    def log_total_time() -> None:
+        """Log the time since the start of the CG, as the Rust backend does."""
+        logger.info(f"Total time was {time.perf_counter() - start_time:.5e} seconds.")
 
     # last completed iteration and its residual, returned if the loop ends early
     n_iter, res = 0, 0.0
@@ -79,18 +69,20 @@ def _conjugate_gradient(
 
     # b = 0 means x = 0 is the solution, and the relative residual would divide by zero
     if ref_norm == 0.0:
-        print("Conjugate Gradient: RHS vector `b` is zero. Solved in 0 iterations.")
-        print_total_time()
+        logger.info(
+            "Conjugate Gradient: RHS vector `b` is zero. Solved in 0 iterations."
+        )
+        log_total_time()
         return 0, 0.0
 
     # the starting point may already be good enough
     err = this_norm / ref_norm
     if err <= tol:
-        print(
+        logger.info(
             f"Conjugate Gradient: Initial guess satisfies tolerance "
             f"({err:.3e} <= {tol:.3e})."
         )
-        print_total_time()
+        log_total_time()
         return 0, float(err)
 
     # first search direction: steepest descent on the preconditioned residual
@@ -104,7 +96,7 @@ def _conjugate_gradient(
         # NOTE: after this `break` the code below prints the "Reached max iterations"
         # message, which is not exactly what happened; kept as in the Rust backend
         if d2 == 0.0:
-            print(
+            logger.info(
                 f"Conjugate Gradient: Zero curvature encountered at iteration {it}. "
                 "Stopping."
             )
@@ -125,17 +117,17 @@ def _conjugate_gradient(
 
         # one line per iteration, with the same text as the Rust backend so that the
         # two logs can be compared
-        print(
+        logger.info(
             f"[CG {100 * it / maxiter:3.0f}%] step {it:4d}/{maxiter} "
             f"▸ residual = {res:.3e}"
         )
 
         if res <= tol:
-            print(
+            logger.info(
                 f"Conjugate Gradient: Converged in {n_iter} iterations "
                 f"(res = {res:.3e} <= {tol:.3e})."
             )
-            print_total_time()
+            log_total_time()
             return n_iter, float(res)
 
         # new search direction: the new preconditioned residual plus a fraction beta of
@@ -146,9 +138,9 @@ def _conjugate_gradient(
 
         d = beta * d - h
 
-    print(
+    logger.info(
         f"Conjugate Gradient: Reached max iterations ({maxiter}) without full "
         f"convergence. Final residual: {res:.3e}"
     )
-    print_total_time()
+    log_total_time()
     return n_iter, float(res)

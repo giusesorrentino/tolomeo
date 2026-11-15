@@ -27,6 +27,7 @@ Only auto-spectra are supported, so ``n_cols = n_det``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
@@ -43,6 +44,8 @@ from ..map import MapGeometry
 from ..processing.config import Bandpass, FrequencyFilter, Highpass, Lowpass
 from ..processing.masks import Mask, RadiusMask
 from ..tod import Scan
+
+logger = logging.getLogger(__name__)
 
 # level of the inverse spectra outside the passband, relative to their maximum inside
 _STOP_FACTOR = 1e-8
@@ -573,11 +576,11 @@ def _build_noise_model(
     n_total = n_samples * n_det
     n_masked = 0 if background is None else int((~background).sum())
 
-    print(
+    logger.info(
         f"[NOISE] Estimating the auto-spectra of {n_det} detectors "
         f"(n_freqs = {n_freqs}, nperseg = {nperseg})"
     )
-    print(
+    logger.info(
         f"[NOISE] {n_masked} of {n_total} detector samples are masked in the noise "
         f"estimate ({100 * n_masked / n_total:.1f}%)"
     )
@@ -600,8 +603,8 @@ def _build_noise_model(
     inv_noiseps = np.column_stack([future.result() for future in futures])
     det_pairs = np.array([(idet, idet) for idet in range(n_det)], dtype=np.uintp)
 
-    print(f"[NOISE] Auto-spectra done in {perf_counter() - t0:.2f}s")
-    print(
+    logger.info(f"[NOISE] Auto-spectra done in {perf_counter() - t0:.2f}s")
+    logger.info(
         f"[NOISE] Estimation done in {perf_counter() - t0:.2f}s "
         f"(inv_noiseps shape = {inv_noiseps.shape}, "
         f"det_pairs shape = {det_pairs.shape})"

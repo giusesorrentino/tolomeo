@@ -8,9 +8,23 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.linalg import lstsq
 
+from .._lib.messages import _warn
 from .splines import bspline_basis_from_knots
 
-logger = logging.getLogger("tolomeo")
+logger = logging.getLogger(__name__)
+
+# the texts of the warnings are the same for every subscan, so that Python shows each
+# of them once; the numbers of every subscan are debug messages
+_SKIPPED = (
+    "Some baseline or spline fits were skipped: in some subscans a detector has "
+    "fewer background samples than coefficients, and nothing was subtracted there. "
+    "tolomeo.debug() (or `tolomeo -v`) shows the numbers."
+)
+_DEFICIENT = (
+    "Some baseline or spline fits are not fully constrained by the background "
+    "samples: the coefficients with no data were set to 0. tolomeo.debug() (or "
+    "`tolomeo -v`) shows the numbers."
+)
 
 
 def remove_baseline(
@@ -159,7 +173,8 @@ def _masked_lstsq(
 
         # fewer samples than coefficients: the fit is skipped, nothing is subtracted
         if n_usable < n_coef:
-            logger.warning(
+            _warn(_SKIPPED)
+            logger.debug(
                 "%d of %d fits skipped: %d background samples for %d coefficients; "
                 "nothing was subtracted.",
                 n_det,
@@ -173,7 +188,8 @@ def _masked_lstsq(
 
         # the samples leave a coefficient without data (a spline knot over the hole)
         if rank < n_coef:
-            logger.warning(
+            _warn(_DEFICIENT)
+            logger.debug(
                 "%d of %d fits are not fully constrained by the background samples "
                 "(rank %d of %d): the coefficients with no data are 0.",
                 n_det,
@@ -200,7 +216,8 @@ def _masked_lstsq(
 
     # one message per call, not one per detector
     if n_skipped:
-        logger.warning(
+        _warn(_SKIPPED)
+        logger.debug(
             "%d of %d fits skipped: fewer background samples than the %d "
             "coefficients; nothing was subtracted there.",
             n_skipped,
@@ -209,7 +226,8 @@ def _masked_lstsq(
         )
 
     if n_deficient:
-        logger.warning(
+        _warn(_DEFICIENT)
+        logger.debug(
             "%d of %d fits are not fully constrained by the background samples: "
             "the coefficients with no data are 0.",
             n_deficient,
