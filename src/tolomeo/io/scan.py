@@ -15,7 +15,7 @@ __all__ = ["read_scan"]
 
 # unit strings accepted for the angular columns of the DATA TABLE
 _RADIAN_UNITS = {"rad", "radian", "radians"}
-_ARCSEC_TO_RAD = 4.84814e-6
+_ARCSEC_TO_RAD = np.pi / (180 * 3600)
 
 
 class SubScan(NamedTuple):
