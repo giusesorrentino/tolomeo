@@ -47,7 +47,6 @@ package = "tolomeo"
 
 [tool.spin.commands]
 "Build & Develop" = [
-    ".spin/cmds.py:build",
     ".spin/cmds.py:lint",
     ".spin/cmds.py:smoke",
     ".spin/cmds.py:test",
