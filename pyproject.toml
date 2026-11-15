@@ -38,6 +38,7 @@ classifiers = [
 dev = [
     "ipykernel>=7.4.0",
     "pre-commit>=4.6.2",
+    "pytest>=9.2.0",
     "ruff>=0.17.0",
     "spin>=0.18",
 ]
