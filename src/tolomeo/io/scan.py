@@ -1,4 +1,5 @@
 import os
+from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import NamedTuple
@@ -37,7 +38,7 @@ class SubScan(NamedTuple):
 
 
 def read_scan(
-    tod_dirs: str | Path | ScanSpec | list[str | Path | ScanSpec],
+    tod_dirs: str | Path | ScanSpec | Sequence[str | Path | ScanSpec],
     beammap_path: str | Path,
 ) -> Scan:
     """
@@ -45,7 +46,7 @@ def read_scan(
 
     Parameters
     ----------
-    tod_dirs : str, :class:`~pathlib.Path` or list of str, :class:`~pathlib.Path`
+    tod_dirs : str, :class:`~pathlib.Path`, :class:`~tolomeo.tod.ScanSpec` or a sequence of them
         Directory or list of directories with the FITS subscans of each scan.
     beammap_path : str or :class:`~pathlib.Path`
         Beammap text file, with columns id, lon and lat offsets (deg), two
