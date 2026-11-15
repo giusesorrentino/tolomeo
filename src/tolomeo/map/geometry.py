@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .._lib.units import Arcsec, Radians, _to_unit
 from .._typing import Frame, Projection
-from ..coords.transforms import radec2xy
+from ..coords.transforms import radec2xy, rot
 from ..tod import Scan
 
 __all__ = ["MapGeometry"]
@@ -35,6 +35,11 @@ class MapGeometry(BaseModel):
         converted to radians.
     projection : :class:`~tolomeo._typing.Projection`
         Projection of the sphere on the map plane.
+    frame : {"radec", "azel"}
+        Orientation of the map. ``"radec"``: north up and east on the left.
+        ``"azel"``: still centred on ``center`` (the source, in RA/Dec), but turned
+        with the parallactic angle, so that the elevation is up and the azimuth grows
+        to the right. Default ``"radec"``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -53,7 +58,7 @@ class MapGeometry(BaseModel):
 
     def to_wcs(self) -> WCS:
         """
-        Return the celestial WCS of the map grid.
+        Return the WCS of the map grid.
 
         The WCS puts every sky position in the same pixel as
         ``tolomeo.mapmaking._pointing._pointing_matrix``. Its pixel axes are ``(x, y)``,
@@ -62,17 +67,19 @@ class MapGeometry(BaseModel):
         Returns
         -------
         :class:`astropy.wcs.WCS`
-            Two axes, RA then Dec, in degrees. ``CDELT1`` is negative: x grows toward
-            the west, so the east is on the left of the image, as in the pixelization.
+            ``"radec"``: two celestial axes, RA then Dec, in degrees. ``CDELT1`` is
+            negative: x grows toward the west, so the east is on the left of the image,
+            as in the pixelization.
+            ``"azel"``: two linear axes, ``AZOFFSET`` and ``ELOFFSET``, in degrees from
+            the centre. x grows with the azimuth, so ``CDELT1`` is positive. The
+            orientation of the map on the sky changes along the scan, so this WCS
+            cannot give RA and Dec.
         """
         step = self.pixel_size / 3600.0  # deg
         ra0, dec0 = np.rad2deg(self.center)
         proj = self.projection.upper()
 
         wcs = WCS(naxis=2)
-        wcs.wcs.ctype = [f"RA---{proj}", f"DEC--{proj}"]
-        wcs.wcs.cunit = ["deg", "deg"]
-        wcs.wcs.cdelt = [-step, step]
 
         # CRPIX is 1-based and counts from pixel centers, while the pixelization counts
         # from the grid edge (xmin = -n * step / 2); the projection center is at x = y = 0,
@@ -81,8 +88,21 @@ class MapGeometry(BaseModel):
         # the middle pixel if n is odd.
         crpix = [self.nx / 2 + 0.5, self.ny / 2 + 0.5]
 
-        wcs.wcs.crval = [ra0, dec0]
-        wcs.wcs.crpix = crpix
+        if self.frame == "radec":
+            wcs.wcs.ctype = [f"RA---{proj}", f"DEC--{proj}"]
+            wcs.wcs.cunit = ["deg", "deg"]
+            wcs.wcs.cdelt = [-step, step]
+
+            wcs.wcs.crval = [ra0, dec0]
+            wcs.wcs.crpix = crpix
+        else:
+            # offsets from the centre: not celestial types, so astropy treats them as
+            # linear axes
+            wcs.wcs.ctype = ["AZOFFSET", "ELOFFSET"]
+            wcs.wcs.cunit = ["deg", "deg"]
+            wcs.wcs.cdelt = [step, step]  # positive: x grows with azimuth
+            wcs.wcs.crval = [0.0, 0.0]  # the source is at offset 0
+            wcs.wcs.crpix = crpix  # same as for radec
 
         return wcs
 
@@ -143,13 +163,15 @@ class MapGeometry(BaseModel):
         """
         Geometry that covers every detector of ``scan``, centred on ``center``.
 
-        The valid samples of the boresight (``scan.tod.flags`` True and finite
-        coordinates) are projected on the plane of ``projection`` around ``center``.
-        The half-size of the map along each axis is the largest distance of the
-        boresight from the centre plus the largest offset of a detector from the
-        boresight, so the whole array fits at every sample. The offsets rotate with
-        the parallactic angle, so their largest radius is used in both directions.
-        ``margin`` pixels are then added on each side.
+        The valid samples of the boresight (``scan.tod.flags`` True and finite RA, Dec
+        and parallactic angle) are projected on the plane of ``projection`` around
+        ``center``; for ``"azel"`` they are then turned with the parallactic angle, as
+        in ``tolomeo.mapmaking._pointing._pointing_matrix``. The half-size of the map
+        along each axis is the largest distance of the boresight from the centre plus
+        the largest offset of a detector from the boresight, so the whole array fits
+        at every sample. The offsets rotate with the parallactic angle in ``"radec"``,
+        so their largest radius is used in both directions. ``margin`` pixels are then
+        added on each side.
 
         Parameters
         ----------
@@ -162,13 +184,10 @@ class MapGeometry(BaseModel):
         projection : {"sin", "tan", "zea"}
             Projection of the map. Default ``"sin"``.
         frame : {"radec", "azel"}
-            Coordinates of the map. ``"azel"`` is not supported by the mapmaker
-            yet. Default ``"radec"``.
+            Orientation of the map, see :class:`MapGeometry`. Default ``"radec"``.
         center : tuple of float, optional
-            Projection centre, in radians: ``(ra, dec)`` for ``"radec"``,
-            ``(az, el)`` for ``"azel"``. None means :attr:`~tolomeo.tod.Scan.center`
-            for ``"radec"``, and the circular mean of the azimuth and the mean of
-            the elevation of the valid samples for ``"azel"``.
+            Projection centre ``(ra, dec)``, in radians, for both frames. None means
+            :attr:`~tolomeo.tod.Scan.center`.
         margin : int
             Pixels added on each side of the map. Default ``10``.
 
@@ -184,32 +203,27 @@ class MapGeometry(BaseModel):
         ValueError
             If ``frame`` is not ``"radec"`` or ``"azel"``.
         """
+        if frame not in ("radec", "azel"):
+            raise ValueError(f"Unknown frame: {frame!r}")
+
         pix = np.deg2rad(_to_unit(pixel_size, u.arcsec) / 3600)
         coords = scan.coordinates
 
-        # the frame only chooses the spherical coordinates; the projection is the same
-        if frame == "radec":
-            lon, lat = coords.ra, coords.dec
-        elif frame == "azel":
-            lon, lat = coords.az, coords.el
-        else:
-            raise ValueError(f"Unknown frame: {frame!r}")
-
-        ok = scan.tod.flags & np.isfinite(lon) & np.isfinite(lat)
+        # the boresight is always projected around the center in RA/Dec; in azel it is
+        # then turned into the horizontal orientation, as in _pointing_matrix
+        ra, dec, par = coords.ra, coords.dec, coords.par_angle
+        ok = scan.tod.flags & np.isfinite(ra) & np.isfinite(dec) & np.isfinite(par)
 
         if center is None:
-            if frame == "radec":
-                center = scan.center
-            else:
-                # circular mean: the azimuth wraps at 0/360 deg
-                center = (
-                    np.angle(np.mean(np.exp(1j * lon[ok]))) % (2 * np.pi),
-                    np.mean(lat[ok]),
-                )
+            center = scan.center
 
-        lon0, lat0 = center
-        x, y = radec2xy(lon[ok], lat[ok], lon0, lat0, projection=projection)
+        ra0, dec0 = center
+        x, y = radec2xy(ra[ok], dec[ok], ra0, dec0, projection=projection)
         r_array = np.hypot(scan.offsets["lon"], scan.offsets["lat"]).max()
+
+        if frame == "azel":
+            x, y = rot(-x, y, -par[ok])
+
         half_x = np.abs(x).max() + r_array
         half_y = np.abs(y).max() + r_array
 

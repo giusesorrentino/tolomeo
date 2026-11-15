@@ -31,7 +31,10 @@ def _pointing_matrix(
         ``"lon"`` and ``"lat"``: offset of every detector from the boresight, each
         ``(n_det,)``, in radians.
     geometry : :class:`~tolomeo.map.MapGeometry`
-        Map grid and projection, centred on ``geometry.center``.
+        Map grid, projection and frame, centred on ``geometry.center``. With
+        ``frame="azel"`` the boresight is turned with the parallactic angle and the
+        offsets are added as they are, so that the map is centred on the source with
+        the elevation up.
 
     Returns
     -------
@@ -43,11 +46,6 @@ def _pointing_matrix(
         True where the sample falls inside the map.
         Shape ``(n_samples, n_det)``.
     """
-    if geometry.frame == "azel":
-        raise NotImplementedError(
-            "Frame 'azel' is not implemented in the mapmaker yet."
-        )
-
     # centre of the map, which is also the tangent point of the projection (radians)
     ra0, dec0 = geometry.center
     ra, dec = coords.ra, coords.dec
@@ -82,17 +80,27 @@ def _pointing_matrix(
         needed.
         """
         x_blk, y_blk, p_blk = x[start:stop], y[start:stop], coords.par_angle[start:stop]
+
+        if geometry.frame == "azel":
+            # boresight turned into the horizontal orientation: it does not depend on
+            # the detector, so it is computed once per block
+            u, v = rot(-x_blk, y_blk, -p_blk)
+
         for j in range(n_det):
             # offset of detector j from the boresight (radians)
             x_off, y_off = offsets["lon"][j], offsets["lat"][j]
 
-            # the offset rotates with the parallactic angle, so it changes along the scan
-            x_rot, y_rot = rot(x_off, y_off, p_blk)
-
-            # position of the detector on the tangent plane. x_det grows toward the west,
-            # so that the east is on the left of the image, as in the standard orientation
-            x_det = -x_blk + x_rot
-            y_det = y_blk + y_rot
+            if geometry.frame == "radec":
+                # the offset rotates with the parallactic angle; x_det grows toward
+                # the west, so that the east is on the left of the image
+                x_rot, y_rot = rot(x_off, y_off, p_blk)
+                x_det = -x_blk + x_rot
+                y_det = y_blk + y_rot
+            else:
+                # azel: the offsets are fixed in the horizontal frame, and x_det grows
+                # with the azimuth
+                x_det = u + x_off
+                y_det = v + y_off
 
             # pixel indices: distance from the lower-left corner in pixel units, rounded down
             # (still floats here, and NaN where the coordinates are NaN)

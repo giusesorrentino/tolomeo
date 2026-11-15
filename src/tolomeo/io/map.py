@@ -32,8 +32,10 @@ def write_map(
 
     * Primary HDU (``EXTNAME = "SCI"``): ``result.image`` with the WCS of
       ``result.geometry`` and the keywords ``BUNIT`` (if ``result.unit`` is known),
-      ``NITER``, ``RESID``, ``CONVERGD``, ``TOLOMEO`` (version of the package) and those
-      of ``extra_header``.
+      ``NITER``, ``RESID``, ``CONVERGD``, ``TOLOMEO`` (version of the package), those
+      of ``extra_header``, and ``FRAME``, ``OBSRA``, ``OBSDEC`` and ``PROJ`` (frame,
+      centre in degrees and projection of the geometry, which :func:`read_map` needs
+      for an ``"azel"`` map, whose WCS has neither the centre nor the projection).
     * ``"HITS"``: ``result.hits``, with the WCS and ``BUNIT = "count"``.
     * ``"WEIGHTS"``: ``result.weights``, with the WCS; only if they are not None.
     * ``"CONFIG"``: a table with one column, ``LINE``, that holds the lines of
@@ -59,10 +61,18 @@ def write_map(
     """
 
     check_fits_suffix(Path(path))
+    geometry = result.geometry
 
     # header shared by the image HDUs: the WCS and the keywords of the caller
-    base = result.geometry.to_wcs().to_header()
+    base = geometry.to_wcs().to_header()
     base.update(extra_header or {})
+
+    # what read_map needs to rebuild the geometry: the WCS of an azel map has neither
+    # the centre nor the projection
+    base["FRAME"] = (geometry.frame, "Frame of the map: radec or azel")
+    base["OBSRA"] = (np.rad2deg(geometry.center[0]), "[deg] RA of the map centre")
+    base["OBSDEC"] = (np.rad2deg(geometry.center[1]), "[deg] Dec of the map centre")
+    base["PROJ"] = (geometry.projection, "Projection of the map")
 
     try:
         base["TOLOMEO"] = (version("tolomeo"), "Version of tolomeo")
@@ -115,10 +125,14 @@ def read_map(path: str | Path) -> MapResult:
     -------
     :class:`~tolomeo.map.MapResult`
         ``image`` (float64) and ``hits`` (int64) of shape ``(ny, nx)``, ``n_iter`` and
-        ``residual`` from the header, and the geometry rebuilt from ``CDELT2``,
-        ``CRVAL1``, ``CRVAL2`` and ``CTYPE1``. ``weights``, ``converged`` and ``unit``
-        come from the ``"WEIGHTS"`` extension and the keywords ``CONVERGD`` and
-        ``BUNIT``; a file written before they existed gives None, True and None.
+        ``residual`` from the header, and the geometry rebuilt from the header: the
+        pixel size from ``CDELT2``, the frame from ``FRAME``, and the centre and the
+        projection from ``CRVAL1``, ``CRVAL2`` and ``CTYPE1`` for ``"radec"``, from
+        ``OBSRA``, ``OBSDEC`` and ``PROJ`` for ``"azel"``. A file without ``FRAME``,
+        written before it existed, is read as ``"radec"``. ``weights``, ``converged``
+        and ``unit`` come from the ``"WEIGHTS"`` extension and the keywords
+        ``CONVERGD`` and ``BUNIT``; a file written before they existed gives None, True
+        and None.
 
     Notes
     -----
@@ -145,13 +159,22 @@ def read_map(path: str | Path) -> MapResult:
             n_iter = header["NITER"]
             residual = header["RESID"]
 
+            frame = header.get("FRAME", "radec")  # files written before: radec
+            if frame == "azel":
+                center = (np.deg2rad(header["OBSRA"]), np.deg2rad(header["OBSDEC"]))
+                projection = header["PROJ"]
+            else:
+                center = (np.deg2rad(header["CRVAL1"]), np.deg2rad(header["CRVAL2"]))
+                projection = header["CTYPE1"][-3:].lower()
+
             ny, nx = image.shape
             geometry = MapGeometry(
                 nx=nx,
                 ny=ny,
                 pixel_size=abs(header["CDELT2"]) * 3600,
-                center=(np.deg2rad(header["CRVAL1"]), np.deg2rad(header["CRVAL2"])),
-                projection=header["CTYPE1"][-3:].lower(),  # "RA---SIN" -> "sin"
+                center=center,
+                projection=projection,
+                frame=frame,
             )
         except KeyError as exc:
             raise ValueError(f"{path} is not a tolomeo map: missing {exc}") from exc
