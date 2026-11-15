@@ -73,3 +73,25 @@ filterwarnings = [
     # does not declare it can run without the GIL turns the GIL back on, and warns
     'ignore:The global interpreter lock \(GIL\) has been enabled:RuntimeWarning',
 ]
+
+[tool.repo-review]
+ignore = [
+    "PY004",  # no docs folder yet
+    "GH100",  # no GitHub Actions yet
+    "MY100",  # tolomeo currently does not use a type checker
+    "PC140",  # tolomeo currently does not use a type checker
+]
+
+[tool.ruff]
+include = [
+    "src/**/*.py",
+    "tests/**/*.py",
+    "pyproject.toml",
+]
+
+[tool.ruff.lint]
+extend-select = [
+    "B",
+    "I",
+    "UP",
+]
