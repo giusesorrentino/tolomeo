@@ -95,6 +95,8 @@ class Coordinates(BaseModel):
                 "No finite boresight coordinates: cannot compute the center."
             )
 
-        ra0 = np.arctan2(np.mean(np.sin(self.ra[good])), np.mean(np.cos(self.ra[good])))
+        ra0 = np.arctan2(
+            np.mean(np.sin(self.ra[good])), np.mean(np.cos(self.ra[good]))
+        ) % (2 * np.pi)
         dec0 = np.mean(self.dec[good])
         return float(ra0), float(dec0)
