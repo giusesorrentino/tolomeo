@@ -1,28 +1,3 @@
-"""
-The maps of a scan: ``binned_map`` and ``gls_map``.
-
-``binned_map`` is the mean of the samples of every pixel, with no noise weighting, for
-quick checks. ``gls_map`` is the generalized least squares (GLS) map: it builds the
-normal equations ``A m = b``, with ``A = P^T N^-1 P`` and ``b = P^T N^-1 d``
-(``_operators._normal_equations``), and solves them by preconditioned conjugate
-gradient (``_solver._conjugate_gradient``). Both sum the samples of every pixel with
-``_bin``.
-
-The other private modules of ``mapmaking``:
-
-==================  ==============================================================
-``_pointing.py``    the pixel of every sample of every detector
-``_blocks.py``      sizes and positions of the blocks of the noise filter
-``_noise.py``       the noise model, the inverse noise spectra
-``_operators.py``   ``P`` and ``P^T``, the filter ``N^-1``, the right-hand side,
-                    ``A`` and its diagonal preconditioner
-``_solver.py``      the conjugate gradient
-==================  ==============================================================
-
-Dependencies go one way: ``_blocks`` and ``_noise`` <- ``_operators`` <- this
-module; ``_pointing`` and ``_solver`` depend on nothing else in ``mapmaking``.
-"""
-
 import time
 import warnings
 
@@ -344,15 +319,12 @@ def _bin(
         Pixels of the map.
     values : :class:`~numpy.ndarray` of float64, optional
         What is summed, raised to ``power``. None means 1 for every sample: the sum is
-        the number of samples.
-        Shape ``(n_samples, n_det)``.
+        the number of samples. Shape ``(n_samples, n_det)``.
     power : int
-        Power of ``values``.
-        Default ``1``.
+        Power of ``values``. Default ``1``.
     det_weights : :class:`~numpy.ndarray` of float64, optional
         One factor per detector, applied to the sums of its samples (for example
-        ``lag_zero``).
-        Shape ``(n_det,)``.
+        ``lag_zero``). Shape ``(n_det,)``.
 
     Returns
     -------
@@ -365,4 +337,5 @@ def _bin(
         weights = None if values is None else values[rows, idet] ** power
         sums = np.bincount(pixels[rows, idet], weights=weights, minlength=n_pixels)
         total += sums if det_weights is None else det_weights[idet] * sums
+
     return total
