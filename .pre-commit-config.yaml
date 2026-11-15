@@ -78,6 +78,7 @@ repos:
           - mdformat-gfm
           - mdformat-footnote
           - mdformat-gfm-alerts
+        exclude: ^\.claude/
 
   - repo: https://github.com/scientific-python/cookie
     rev: 2026.08.14
