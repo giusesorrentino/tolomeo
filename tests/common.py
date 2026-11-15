@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 import numpy as np
 from astropy.io import fits
 
@@ -214,9 +216,7 @@ def write_scan_dir(folder, scan):
     tod_dir = folder / "tod"
     tod_dir.mkdir(parents=True)
 
-    for k, (start, stop) in enumerate(
-        zip(scan.tod.segments[:-1], scan.tod.segments[1:])
-    ):
+    for k, (start, stop) in enumerate(pairwise(scan.tod.segments)):
         write_subscan(tod_dir / f"subscan_{k:03d}.fits", scan, start, stop)
 
     beammap = folder / "beammap.dat"

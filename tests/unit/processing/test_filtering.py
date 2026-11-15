@@ -1,3 +1,5 @@
+from itertools import pairwise
+
 import numpy as np
 import pytest
 
@@ -28,7 +30,7 @@ def _drifting_scan():
     n_samples, n_det = scan.tod.signal.shape
     common = np.cumsum(rng.standard_normal(n_samples))[:, None]
     lines = np.zeros((n_samples, n_det))
-    for start, stop in zip(scan.tod.segments[:-1], scan.tod.segments[1:]):
+    for start, stop in pairwise(scan.tod.segments):
         x = np.linspace(-1, 1, stop - start)[:, None]
         lines[start:stop] = rng.normal(size=n_det) + rng.normal(size=n_det) * x
     return with_signal(scan, scan.tod.signal + common + lines)
