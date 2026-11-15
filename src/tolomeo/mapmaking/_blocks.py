@@ -3,24 +3,52 @@ Block geometry of the overlap-save noise filter.
 
 Why blocks
 ----------
-``N^-1`` is a convolution in time, i.e. a product in frequency. A whole TOD is far too
-long for one FFT, so it is cut in blocks of ``block_len = nperseg`` samples, the length
-of the blocks of the noise estimate. Consecutive blocks start
-``core_len = nperseg // 2`` samples apart, so every sample is inside two blocks, but it
-is *kept* from one only: the "core" of that block.
+``N^-1`` is a convolution in time with the kernel of the noise weights, i.e. a product
+in frequency. The weights are known only at the ``nperseg // 2 + 1`` frequencies of a
+block of ``nperseg`` samples, the length of the blocks of the noise estimate, so the
+filter works on blocks of ``block_len = nperseg`` samples: ``rfft`` of a block, product
+by the weights, ``irfft``. One FFT of the whole TOD would need the weights at many more
+frequencies, and its circular convolution would mix the end of the scan with the start.
+The blocks also keep the memory small and are shared among threads.
 
-::
+Core and context
+----------------
+Block ``b`` is responsible for the TOD samples ``core_start .. core_end``, its core:
+``core_len = nperseg // 2`` samples from ``b * core_len`` (the last core may be
+shorter). The filtered value of a sample needs its neighbours too, so the block also
+holds ``context_len`` samples before the core and the rest of the block after it
+(``block_len - context_len - core_len`` samples, equal to ``context_len`` when
+``nperseg`` is a multiple of 4)::
 
-    block b:   |<-- padding -->|<------ core (core_len) ------>|<-- right context -->|
-               |<------------------- block_len = 2 * core_len ---------------------->|
-               ^ read_start_raw = core_start - padding
+    block b:   |<-- context_len -->|<--- core (core_len) --->|<-- right context -->|
+               |<--------------------- block_len = 2 * core_len ------------------>|
+               ^ read_start_raw = core_start - context_len
 
-The samples before and after the core are real neighbouring samples of the TOD (context,
-not zeros): they take the edge effects of the circular convolution, so the core is
-exact as long as the filter response is shorter than the context. Zeros appear only
-where the block sticks out of the TOD (before sample 0, after the last sample).
+The context is made of real samples of the TOD, not zeros. Near the edges of the block
+the circular convolution of the FFT is wrong, but there are only context samples there:
+the filtered core is exact if the kernel ``h(tau)`` is zero for ``|tau| > context_len``.
+Of every block only the core is kept, and the cores of all the blocks tile
+``0 .. n_samples`` with no gap and no overlap. Away from the edges of the TOD a sample
+is in the core of one block and in the context of a neighbouring one.
 
-The cores of all the blocks tile ``0 .. n_samples`` with no gap and no overlap.
+Edges of the TOD
+----------------
+The context of the first block starts before sample 0, and the last blocks go past the
+last sample: there the block holds zeros, the TOD extended with zeros that ``N^-1``
+assumes at the edges. For one block, :class:`BlockWindow` gives the samples really
+read, ``read_start .. read_end``, and ``left_pad``, the zeros before them.
+
+Example with ``nperseg = 8`` (``core_len = 4``, ``context_len = 2``) and a TOD of 10
+samples. Under every position of the block, the TOD sample it holds (``.`` is a zero);
+the ranges are Python slices, with the end excluded::
+
+    position:   0  1  2  3  4  5  6  7
+    block 0:    .  .  0  1  2  3  4  5    core 0..4, read 0..6, left_pad 2
+    block 1:    2  3  4  5  6  7  8  9    core 4..8, read 2..10, left_pad 0
+    block 2:    6  7  8  9  .  .  .  .    core 8..10, read 6..10, left_pad 0
+
+The core is always at the positions ``context_len .. context_len + core_len`` of the
+block (2 .. 6 here), whatever the block.
 """
 
 import math
@@ -36,7 +64,8 @@ class BlockWindow(BaseModel):
     The block holds the TOD samples ``read_start .. read_end`` at the positions
     ``left_pad .. left_pad + (read_end - read_start)`` and zeros everywhere else.
     Its core is the TOD samples ``core_start .. core_end``, found in the block at the
-    positions ``padding .. padding + (core_end - core_start)``.
+    positions ``context_len .. context_len + (core_end - core_start)``
+    (:attr:`BlockLayout.context_len`).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -97,7 +126,7 @@ class BlockLayout(BaseModel):
         return self.nperseg // 2
 
     @property
-    def padding(self) -> int:
+    def context_len(self) -> int:
         """Context samples before the core: ``core_len // 2`` (integer division)."""
         return self.core_len // 2
 
@@ -117,9 +146,9 @@ class BlockLayout(BaseModel):
         core_start = iblock * self.core_len
         core_end = min(core_start + self.core_len, self.n_samples)
 
-        # the block starts `padding` samples before its core: negative for the first
-        # block, where the block sticks out of the TOD on the left
-        read_start_raw = core_start - self.padding
+        # the block starts `context_len` samples before its core: negative for the
+        # first block, where the block sticks out of the TOD on the left
+        read_start_raw = core_start - self.context_len
 
         # zeros needed before the first real sample (non-zero only for the first block)
         left_pad = max(-read_start_raw, 0)
@@ -136,10 +165,3 @@ class BlockLayout(BaseModel):
             read_end=read_end,
             left_pad=left_pad,
         )
-
-
-# Tests worth writing for this file:
-#   * the cores of all blocks tile 0..n_samples exactly (concatenate them and compare);
-#   * read_end - read_start + left_pad <= block_len for every block;
-#   * a TOD shorter than one block, and one whose length is an exact multiple of core_len;
-#   * for an interior block, left_pad == 0 and read_end - read_start == block_len.

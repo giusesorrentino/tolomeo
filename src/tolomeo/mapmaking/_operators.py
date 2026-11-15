@@ -104,20 +104,20 @@ class PointingOperator:
         """
         ``P^T`` for one block: add the core of a filtered block to ``out_map``, in place.
 
-        The core of the block is at the positions ``padding .. padding + n`` with
-        ``n = core_end - core_start``, and its samples belong to the pixels of the TOD
-        samples ``core_start .. core_end`` of every detector. Several samples (and
+        The core of the block is at the positions ``context_len .. context_len + n``,
+        with ``n = core_end - core_start``, and its samples belong to the pixels of the
+        TOD samples ``core_start .. core_end`` of every detector. Several samples (and
         several detectors) hit the same pixel, so a plain ``out_map[pixels] += values``
         would be **wrong** (with repeated indices only one of the additions is kept).
         ``np.bincount`` with ``weights=`` sums the values that fall in the same pixel;
         ``np.add.at`` would also be correct but much slower.
         """
         n = window.core_end - window.core_start
-        padding = self.layout.padding
+        context_len = self.layout.context_len
 
-        # the core of the filtered block, (n_det, n): it starts `padding` samples into
-        # the block
-        values = time_buf[:, padding : padding + n]
+        # the core of the filtered block, (n_det, n): it starts `context_len` samples
+        # into the block
+        values = time_buf[:, context_len : context_len + n]
 
         # the pixels of the same samples, with the same shape (n_det, n)
         pixels = self.pixels_by_det[:, window.core_start : window.core_end]
@@ -544,10 +544,3 @@ def _normal_equations(
         workers=workers,
     )
     return operator, b
-
-
-# Tests worth writing for this file:
-#   * adjointness: <P x, y> == <x, P^T y> for random x, y (use a tiny layout);
-#   * A is symmetric and positive: <u, A v> == <A u, v> and <v, A v> > 0;
-#   * with all noise weights equal to 1, N^-1 is the identity, so A x is the
-#     hit-weighted map and the final GLS map must equal ``binned_map``.
