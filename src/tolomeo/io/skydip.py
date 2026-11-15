@@ -77,7 +77,9 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
         results = [future.result() for future in futures]
 
     # a file that cannot be used comes back as None
-    skipped = [file.name for file, result in zip(files, results) if result is None]
+    skipped = [
+        file.name for file, result in zip(files, results, strict=True) if result is None
+    ]
     used = [result for result in results if result is not None]
 
     if skipped:

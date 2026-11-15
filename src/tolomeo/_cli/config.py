@@ -248,7 +248,7 @@ class RunConfig(BaseModel):
     def from_yaml(cls: type[RunConfig], path: str | Path) -> RunConfig:
         YAML_FOLDER = Path(path).expanduser().resolve().parent
 
-        with open(path, "r") as yaml_file:
+        with open(path) as yaml_file:
             yaml_text = yaml_file.read()
             raw = yaml.safe_load(yaml_text)
             if raw is None:

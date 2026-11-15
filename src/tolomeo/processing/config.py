@@ -308,7 +308,7 @@ class FilteringConfig(BaseModel):
         """
         filepath = Path(filepath).resolve()
 
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(filepath, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
         return cls.model_validate(data)

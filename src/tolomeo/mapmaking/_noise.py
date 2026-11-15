@@ -155,7 +155,12 @@ class InverseNoise(BaseModel):
             )
 
         first = next(
-            (j for j, (a, b) in enumerate(zip(scan_ids, model_ids)) if a != b), None
+            (
+                j
+                for j, (a, b) in enumerate(zip(scan_ids, model_ids, strict=True))
+                if a != b
+            ),
+            None,
         )
         if first is not None:
             raise ValueError(
