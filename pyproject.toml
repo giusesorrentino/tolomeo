@@ -55,3 +55,21 @@ package = "tolomeo"
 
 [project.scripts]
 tolomeo = "tolomeo._cli:main"
+
+[tool.pytest]
+testpaths = [
+    "tests",
+]
+minversion = "9"
+log_level = "INFO"
+strict = true
+addopts = ["-ra", "--ignore=tests/smoke_test.py"]
+filterwarnings = [
+    "error",
+    # read_scan and read_skydip start a ProcessPoolExecutor: on Linux with Python 3.12
+    # and 3.13 it forks, and Python warns if the process already has threads (BLAS)
+    'ignore:This process \(pid=\d+\) is multi-threaded, use of fork\(\):DeprecationWarning',
+    # free-threaded Python: a compiled module of a dependency (astropy.io.fits) that
+    # does not declare it can run without the GIL turns the GIL back on, and warns
+    'ignore:The global interpreter lock \(GIL\) has been enabled:RuntimeWarning',
+]
