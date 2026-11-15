@@ -1389,16 +1389,16 @@ wheels = [
 
 [[package]]
 name = "spin"
-version = "0.18"
+version = "0.19"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "importlib-metadata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b6/da/b91a3ffaddb128098fcd75a13f95ea92e89390c0d842b2b524b7e557e738/spin-0.18.tar.gz", hash = "sha256:1c8e8d1d67f20f9bfce0bbe43cff4131d728de4d1905d90ee3d8b29b17320006", size = 31058, upload-time = "2026-03-29T14:44:15.441Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/c6/9f606d7b9b16ba1d7e7e70394dfdea39f6f268d3d22503b56bebd7a85ac7/spin-0.19.tar.gz", hash = "sha256:708b81ccb578dbe8d83458a3dd240a5801c5922576ec1e0f78483f3e5e212b7e", size = 30968, upload-time = "2026-10-29T00:41:26.825Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/de/97/195ca52de106ac8ca3ebe92363897b3d346cc6fc93c3d54025eb98b213c0/spin-0.18-py3-none-any.whl", hash = "sha256:1390dc93933c3a62af1a3b80a7db14b6345df4b7fe1131a2608774fe9d8b8dcd", size = 32016, upload-time = "2026-03-29T14:44:13.898Z" },
+    { url = "https://files.pythonhosted.org/packages/79/25/892cfe2b68ecc8c805c910ffe362c14ca2b1b783a832dc5a306321e35684/spin-0.19-py3-none-any.whl", hash = "sha256:a777a794516a36c328cf1dec5acbb279a08f56aa0a1653743280faae9e83472d", size = 32115, upload-time = "2026-10-29T00:41:25.521Z" },
 ]
 
 [[package]]
