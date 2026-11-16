@@ -26,6 +26,7 @@ def _map_result(image=None, hits=None):
         n_iter=5,
         residual=1e-4,
         geometry=GEOMETRY,
+        solver="cg",
     )
 
 

@@ -95,6 +95,7 @@ def test_full_run(tmp_path):
         header = hdul["SCI"].header
         assert header["BUNIT"] == "K"
         assert header["CONVERGD"]
+        assert header["SOLVER"] == "cg"  # the default
         assert header["CALIB"]
         assert header["NPERSEG"] == 128
         assert header["GLSTOL"] == 1e-3

@@ -25,6 +25,26 @@ def _white_inverse_noise(scan, level=None):
     )
 
 
+def _colored_inverse_noise(scan):
+    """
+    Noise model with the same smooth inverse spectrum for every detector: ``1/f`` noise
+    below a knee at a tenth of the Nyquist frequency, white above, and a weight above
+    zero at ``f = 0``. With it ``A`` is (nearly) symmetric and positive definite, so the
+    CG and MINRES converge to the same map.
+    """
+    n_det = len(scan.detector_ids)
+    freqs = np.fft.rfftfreq(NPERSEG, d=1 / scan.tod.sample_rate)
+    f_knee = 0.1 * freqs[-1]
+    level = 1 / (1 + (f_knee / np.maximum(freqs, freqs[1] / 2)) ** 2)
+    return InverseNoise(
+        inv_noiseps=np.tile(level[:, None], (1, n_det)),
+        det_pairs=np.array([(j, j) for j in range(n_det)], dtype=np.uintp),
+        lag_zero=np.full(n_det, np.fft.irfft(level, n=NPERSEG)[0]),
+        sample_rate=scan.tod.sample_rate,
+        detector_ids=scan.detector_ids,
+    )
+
+
 def _expected_binned(scan, geometry=GEOMETRY):
     """Hits, mean and sample standard deviation of every pixel, one pixel at a time."""
     pixels, valid = _pointing_matrix(scan.coordinates, scan.offsets, geometry)
@@ -91,9 +111,11 @@ def test_binned_map_constant_sky():
 # -----------------------------------------------------------------------------
 
 
-def test_gls_map_with_white_weights_is_the_binned_map():
+@pytest.mark.parametrize("solver", ["cg", "minres"])
+def test_gls_map_with_white_weights_is_the_binned_map(solver):
     # With N^-1 proportional to the identity, A = P^T P is diagonal and the GLS map is
-    # the mean of the samples of every pixel. Starting from zero, the CG must find it.
+    # the mean of the samples of every pixel. Starting from zero, the solver must find
+    # it.
     scan = make_scan()
     inv_noise = _white_inverse_noise(scan)
 
@@ -102,11 +124,13 @@ def test_gls_map_with_white_weights_is_the_binned_map():
         GEOMETRY,
         inv_noise,
         initial_map=np.zeros(GEOMETRY.n_pixels),
+        solver=solver,
         tol=1e-12,
     )
 
     binned = binned_map(scan, GEOMETRY)
     observed = binned.hits > 0
+    assert result.solver == solver
     assert result.converged
     assert result.n_iter >= 1
     np.testing.assert_array_equal(result.hits, binned.hits)
@@ -124,6 +148,37 @@ def test_gls_map_starts_from_the_binned_map():
 
     assert result.n_iter == 0
     assert result.converged
+    assert result.solver == "cg"  # the default
+
+
+@pytest.mark.parametrize("residual_norm", ["plain", "preconditioned", "m_inverse"])
+def test_gls_map_cg_and_minres_give_the_same_map(residual_norm):
+    # Check that the two solvers, from zero and with a tight tolerance, converge to the
+    # same map with colored noise. The tolerance of the comparison, 1e-6 of the peak, is
+    # 100 times the relative residual: room for the conditioning of A.
+    scan = make_scan()
+    inv_noise = _colored_inverse_noise(scan)
+
+    maps = {
+        solver: gls_map(
+            scan,
+            GEOMETRY,
+            inv_noise,
+            initial_map=np.zeros(GEOMETRY.n_pixels),
+            solver=solver,
+            residual_norm=residual_norm,
+            tol=1e-8,
+            workers=1,
+        )
+        for solver in ["cg", "minres"]
+    }
+
+    cg, minres = maps["cg"], maps["minres"]
+    assert cg.converged and minres.converged
+    assert cg.residual <= 1e-8 and minres.residual <= 1e-8
+    np.testing.assert_allclose(
+        minres.image, cg.image, rtol=0, atol=1e-6 * np.abs(cg.image).max()
+    )
 
 
 def test_gls_map_weights_and_unit():
@@ -156,16 +211,18 @@ def test_gls_map_flagged_samples_do_not_touch_the_map():
     np.testing.assert_array_equal(result.hits, reference.hits)
 
 
-def test_gls_map_not_converged_warns():
+@pytest.mark.parametrize("solver", ["cg", "minres"])
+def test_gls_map_not_converged_warns(solver):
     scan = make_scan()
     inv_noise = estimate_inverse_noise(scan, nperseg=NPERSEG, workers=1)
 
-    with pytest.warns(RuntimeWarning, match=r"did not converge"):
+    with pytest.warns(RuntimeWarning, match=r"did not converge.*Increase `maxiter`"):
         result = gls_map(
             scan,
             GEOMETRY,
             inv_noise,
             initial_map=np.zeros(GEOMETRY.n_pixels),
+            solver=solver,
             tol=1e-14,
             maxiter=1,
         )
@@ -202,12 +259,13 @@ def test_gls_map_does_not_depend_on_workers():
 @pytest.mark.parametrize(
     "kwargs, match",
     [
+        ({"solver": "gc"}, r"`solver` must be 'cg' or 'minres'"),
         ({"residual_norm": "max"}, r"`residual_norm` must be"),
         ({"min_hits_frac": 1.0}, r"`min_hits_frac` must be in \[0, 1\)"),
         ({"initial_map": np.zeros((18, 24))}, r"`initial_map` has shape"),
         ({"workers": 0}, r"workers"),
     ],
-    ids=["residual_norm", "min_hits_frac", "initial_map", "workers"],
+    ids=["solver", "residual_norm", "min_hits_frac", "initial_map", "workers"],
 )
 def test_gls_map_invalid_option_raises(kwargs, match):
     scan = make_scan()

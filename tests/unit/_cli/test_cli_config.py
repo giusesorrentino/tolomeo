@@ -72,6 +72,7 @@ def test_noise_config_unknown_key_raises():
 def test_gls_config_defaults():
     config = GLSConfig()
 
+    assert config.solver == "cg"
     assert config.residual_norm == "plain"
     assert config.tol == 1e-3
     assert config.maxiter == 300
@@ -81,8 +82,14 @@ def test_gls_config_defaults():
 
 @pytest.mark.parametrize(
     "kwargs",
-    [{"tol": 0}, {"maxiter": 0}, {"min_hits_frac": 1.0}, {"residual_norm": "max"}],
-    ids=["tol", "maxiter", "min_hits_frac", "residual_norm"],
+    [
+        {"tol": 0},
+        {"maxiter": 0},
+        {"min_hits_frac": 1.0},
+        {"residual_norm": "max"},
+        {"solver": "gc"},
+    ],
+    ids=["tol", "maxiter", "min_hits_frac", "residual_norm", "solver"],
 )
 def test_gls_config_invalid_value_raises(kwargs):
     with pytest.raises(ValidationError):

@@ -17,6 +17,7 @@ def _map_result(**kwargs):
         "n_iter": 3,
         "residual": 1e-4,
         "geometry": GEOMETRY,
+        "solver": "cg",
         "weights": np.ones(SHAPE),
     }
     return MapResult(**(fields | kwargs))
@@ -42,6 +43,24 @@ def test_map_result_wrong_shape_raises(name):
 
     with pytest.raises(ValueError, match=rf"`{name}` must have shape"):
         _map_result(**{name: wrong})
+
+
+def test_map_result_without_solver_raises():
+    # The solver has no default: a map must say which solver made it.
+    with pytest.raises(ValidationError, match=r"solver"):
+        MapResult(
+            image=np.zeros(SHAPE),
+            hits=np.ones(SHAPE, dtype=np.int64),
+            n_iter=3,
+            residual=1e-4,
+            geometry=GEOMETRY,
+        )
+
+
+@pytest.mark.parametrize("solver", ["CG", "gc"])
+def test_map_result_invalid_solver_raises(solver):
+    with pytest.raises(ValidationError, match=r"solver"):
+        _map_result(solver=solver)
 
 
 def test_map_result_is_frozen():

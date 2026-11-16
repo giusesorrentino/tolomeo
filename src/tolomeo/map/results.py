@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
+from .._typing import Solver
 from .geometry import MapGeometry
 
 __all__ = ["BinnedMapResult", "MapResult"]
@@ -23,21 +24,24 @@ class MapResult(BaseModel):
         Number of valid samples that fell in every pixel.
         Shape ``(ny, nx)``.
     n_iter : int
-        Conjugate-gradient iterations done by the kernel.
+        Iterations done by the solver.
     residual : float
-        Final relative residual of the conjugate gradient.
+        Final relative residual of the solver, in the norm ``residual_norm`` of
+        :func:`~tolomeo.mapmaking.gls_map`.
     geometry : :class:`~tolomeo.map.MapGeometry`
         Geometry the map was made with: the FITS writer needs it for the WCS.
+    solver : :class:`~tolomeo._typing.Solver`
+        Solver that made the map: ``"cg"`` (conjugate gradient) or ``"minres"``.
     weights : :class:`~numpy.ndarray` of float64, optional
         Noise weight of every pixel: the sum, over the samples used in the pixel, of the
         zero-lag weight of their detector (``lag_zero``). It is the diagonal of the
-        preconditioner of the conjugate gradient: for white noise it is proportional to
+        preconditioner of the solver: for white noise it is proportional to
         the inverse of the variance of the pixel, for correlated noise only an
         approximation of it. 0 where ``hits == 0``. None if it was not computed.
         Shape ``(ny, nx)``.
     converged : bool
-        True if the conjugate gradient reached ``tol``; False if it stopped at
-        ``maxiter`` before. Default ``True``.
+        True if the solver reached ``tol``; False if it stopped before, at ``maxiter``
+        or for numerical reasons. Default ``True``.
     unit : str, optional
         Unit of ``image``, as a FITS unit string (``"K"`` for a calibrated scan). None
         means not known: the raw units of the instrument.
@@ -51,6 +55,7 @@ class MapResult(BaseModel):
     n_iter: int
     residual: float
     geometry: MapGeometry
+    solver: Solver
     weights: NDArray[np.float64] | None = None
     converged: bool = True
     unit: str | None = None

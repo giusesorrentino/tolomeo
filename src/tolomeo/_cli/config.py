@@ -50,7 +50,8 @@ Example::
           order: 2
 
     gls:                             # arguments of gls_map
-      residual_norm: plain
+      solver: cg                     # cg | minres
+      residual_norm: plain           # plain | preconditioned | m_inverse
       tol: 1.0e-3
       maxiter: 300
       min_hits_frac: 0.1             # optional: only pixels with >= 0.1 * max hits
@@ -89,7 +90,7 @@ from numpy import deg2rad
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .._lib.units import Kelvin, _to_unit
-from .._typing import ResidualNorm
+from .._typing import ResidualNorm, Solver
 from ..io import read_scan
 from ..io.map import check_fits_suffix
 from ..map import MapGeometry
@@ -153,12 +154,15 @@ class GLSConfig(BaseModel):
     """
     The solver (arguments of ``gls_map``).
 
-    ``workers`` follows the convention of ``gls_map``: None is one thread, -1 is all the
-    cores; ``estimate_inverse_noise`` uses it too. ``initial_map`` is not exposed yet.
+    ``solver``, ``residual_norm``, ``tol``, ``maxiter`` and ``min_hits_frac`` have the
+    meaning and the defaults of ``gls_map``. ``workers`` follows the convention of
+    ``gls_map``: None is one thread, -1 is all the cores; ``estimate_inverse_noise``
+    uses it too. ``initial_map`` is not exposed yet.
     """
 
     model_config = ConfigDict(extra="forbid")
 
+    solver: Solver = "cg"
     residual_norm: ResidualNorm = "plain"
     tol: float = Field(default=1e-3, gt=0)
     maxiter: int = Field(default=300, gt=0)

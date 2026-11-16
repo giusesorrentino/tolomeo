@@ -69,6 +69,19 @@ def test_run_writes_the_map(tmp_path):
         np.testing.assert_array_equal(hdul["SCI"].data, result.image)
 
 
+def test_run_uses_the_solver_of_the_config(tmp_path):
+    # Check that gls.solver and gls.residual_norm reach gls_map, and that the solver is
+    # written in the FITS map.
+    gls = GLSConfig(tol=5e-2, workers=1, solver="minres", residual_norm="m_inverse")
+    config = _config(tmp_path, gls=gls)
+
+    result = RunMapmaker(config).run()
+
+    assert result.solver == "minres"
+    with fits.open(config.output.path) as hdul:
+        assert hdul["SCI"].header["SOLVER"] == "minres"
+
+
 def test_run_refuses_an_existing_output(tmp_path):
     # Check that it stops before the cleaning, which works in place on the scan.
     config = _config(tmp_path)

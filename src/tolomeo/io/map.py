@@ -32,10 +32,11 @@ def write_map(
 
     * Primary HDU (``EXTNAME = "SCI"``): ``result.image`` with the WCS of
       ``result.geometry`` and the keywords ``BUNIT`` (if ``result.unit`` is known),
-      ``NITER``, ``RESID``, ``CONVERGD``, ``TOLOMEO`` (version of the package), those
-      of ``extra_header``, and ``FRAME``, ``OBSRA``, ``OBSDEC`` and ``PROJ`` (frame,
-      centre in degrees and projection of the geometry, which :func:`read_map` needs
-      for an ``"azel"`` map, whose WCS has neither the centre nor the projection).
+      ``NITER``, ``RESID``, ``CONVERGD``, ``SOLVER``, ``TOLOMEO`` (version of the
+      package), those of ``extra_header``, and ``FRAME``, ``OBSRA``, ``OBSDEC`` and
+      ``PROJ`` (frame, centre in degrees and projection of the geometry, which
+      :func:`read_map` needs for an ``"azel"`` map, whose WCS has neither the centre
+      nor the projection).
     * ``"HITS"``: ``result.hits``, with the WCS and ``BUNIT = "count"``.
     * ``"WEIGHTS"``: ``result.weights``, with the WCS; only if they are not None.
     * ``"CONFIG"``: a table with one column, ``LINE``, that holds the lines of
@@ -83,9 +84,10 @@ def write_map(
     hdr = base.copy()
     if result.unit is not None:
         hdr["BUNIT"] = (result.unit, "Unit of the map")
-    hdr["NITER"] = (result.n_iter, "Conjugate gradient iterations")
-    hdr["RESID"] = (result.residual, "Final CG residual")
-    hdr["CONVERGD"] = (result.converged, "The CG reached the tolerance")
+    hdr["NITER"] = (result.n_iter, "Iterations of the solver")
+    hdr["RESID"] = (result.residual, "Final relative residual")
+    hdr["CONVERGD"] = (result.converged, "The solver reached the tolerance")
+    hdr["SOLVER"] = (result.solver, "Solver of the map: cg or minres")
     hdr["EXTNAME"] = "SCI"
 
     hdus = [fits.PrimaryHDU(result.image, header=hdr)]
@@ -129,10 +131,10 @@ def read_map(path: str | Path) -> MapResult:
         pixel size from ``CDELT2``, the frame from ``FRAME``, and the centre and the
         projection from ``CRVAL1``, ``CRVAL2`` and ``CTYPE1`` for ``"radec"``, from
         ``OBSRA``, ``OBSDEC`` and ``PROJ`` for ``"azel"``. A file without ``FRAME``,
-        written before it existed, is read as ``"radec"``. ``weights``, ``converged``
-        and ``unit`` come from the ``"WEIGHTS"`` extension and the keywords
-        ``CONVERGD`` and ``BUNIT``; a file written before they existed gives None, True
-        and None.
+        written before it existed, is read as ``"radec"``. ``weights``, ``converged``,
+        ``solver`` and ``unit`` come from the ``"WEIGHTS"`` extension and the keywords
+        ``CONVERGD``, ``SOLVER`` and ``BUNIT``; a file written before they existed
+        gives None, True, ``"cg"`` (the only solver there was) and None.
 
     Notes
     -----
@@ -191,5 +193,6 @@ def read_map(path: str | Path) -> MapResult:
             geometry=geometry,
             weights=weights,
             converged=bool(header.get("CONVERGD", True)),
+            solver=header.get("SOLVER", "cg"),
             unit=header.get("BUNIT"),
         )

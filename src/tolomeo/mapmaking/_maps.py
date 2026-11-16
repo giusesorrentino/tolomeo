@@ -6,13 +6,13 @@ from numpy.typing import NDArray
 
 from .._lib.messages import _warn
 from .._lib.parallel import _resolve_workers
-from .._typing import ResidualNorm
+from .._typing import ResidualNorm, Solver
 from ..map import BinnedMapResult, MapGeometry, MapResult
 from ..tod import Scan
 from ._noise import InverseNoise
 from ._operators import _normal_equations
 from ._pointing import _pointing_matrix
-from ._solver import _conjugate_gradient
+from ._solver import _conjugate_gradient, _minimal_residual
 
 __all__ = ["binned_map", "gls_map"]
 
@@ -85,6 +85,7 @@ def gls_map(
     inv_noise: InverseNoise,
     *,
     initial_map: NDArray[np.float64] | None = None,
+    solver: Solver = "cg",
     residual_norm: ResidualNorm = "plain",
     tol: float = 1e-3,
     maxiter: int = 300,
@@ -94,9 +95,10 @@ def gls_map(
     """
     Generalized least squares (GLS) map of a cleaned scan.
 
-    Solves ``A m = b`` with ``A = P^T N^-1 P`` and ``b = P^T N^-1 d`` by preconditioned
-    conjugate gradient (see ``FUNZIONAMENTO.md``). The samples outside the map or flagged
-    in ``scan.tod.flags`` are sent to a virtual pixel and never touch the map.
+    Solves ``A m = b`` with ``A = P^T N^-1 P`` and ``b = P^T N^-1 d`` with an iterative
+    solver and the diagonal preconditioner ``M`` (see ``FUNZIONAMENTO.md``). The samples
+    outside the map or flagged in ``scan.tod.flags`` are sent to a virtual pixel and
+    never touch the map.
 
     Parameters
     ----------
@@ -109,17 +111,26 @@ def gls_map(
         Noise model of ``scan``, from :func:`~tolomeo.mapmaking.estimate_inverse_noise`:
         same detectors, in the same order, and same sampling frequency.
     initial_map : :class:`~numpy.ndarray` of float64, optional
-        Starting point of the CG, flat (``iy * nx + ix``). None means the binned map:
-        the mean of the used samples of every pixel, 0 where there is none.
+        Starting point of the solver, flat (``iy * nx + ix``). None means the binned
+        map: the mean of the used samples of every pixel, 0 where there is none.
         Shape ``(n_pixels,)``.
+    solver : :class:`~tolomeo._typing.Solver`
+        ``"cg"``, the preconditioned conjugate gradient (Fletcher-Reeves), or
+        ``"minres"``, preconditioned MINRES, whose residual in the ``"m_inverse"`` norm
+        decreases at every iteration. In the tests of ROMA (``README_solvers.md``) the
+        CG gave maps closer to the GLS solution at the same tolerance.
+        Default ``"cg"``.
     residual_norm : :class:`~tolomeo._typing.ResidualNorm`
-        Norm of the relative residual that stops the CG (ROMA's ``itol`` 1 and 2).
+        Norm of the relative residual that stops the solver, with ``r = b - A m``
+        (ROMA's ``itol`` 1, 2 and 3): ``"plain"`` is ``||r|| / ||b||``,
+        ``"preconditioned"`` is ``||M^-1 r|| / ||M^-1 b||`` and ``"m_inverse"`` is
+        ``sqrt(r . M^-1 r) / sqrt(b . M^-1 b)``.
         Default ``"plain"``.
     tol : float
-        Relative residual at which the CG stops.
+        Relative residual at which the solver stops.
         Default ``1e-3``.
     maxiter : int
-        Maximum number of CG iterations.
+        Maximum number of iterations of the solver.
         Default ``300``.
     min_hits_frac : float, optional
         Use only the samples that fall in the pixels with at least ``min_hits_frac`` times
@@ -128,15 +139,15 @@ def gls_map(
         (excluded). None means every pixel.
         Default None.
     workers : int, optional
-        Threads of the pointing and the CG, with SciPy's convention:
+        Threads of the pointing and the solver, with SciPy's convention:
         None is one thread, a positive number that many, ``-1`` all the cores, ``-2``
         all but one.
 
     Returns
     -------
     :class:`~tolomeo.map.MapResult`
-        ``image``, ``hits`` and ``weights`` with shape ``(ny, nx)``, the number of CG
-        iterations, the final relative residual and whether the CG converged. A
+        ``image``, ``hits`` and ``weights`` with shape ``(ny, nx)``, the solver, its
+        number of iterations, the final relative residual and whether it converged. A
         ``RuntimeWarning`` is issued if it did not.
 
     Raises
@@ -149,9 +160,12 @@ def gls_map(
 
     # check the options first: a wrong one must fail now and not after the (slow)
     # pointing computation
-    if residual_norm not in ("plain", "preconditioned"):
+    if solver not in ("cg", "minres"):
+        raise ValueError(f"`solver` must be 'cg' or 'minres', got {solver!r}.")
+    if residual_norm not in ("plain", "preconditioned", "m_inverse"):
         raise ValueError(
-            f"`residual_norm` must be 'plain' or 'preconditioned', got {residual_norm!r}."
+            "`residual_norm` must be 'plain', 'preconditioned' or 'm_inverse', "
+            f"got {residual_norm!r}."
         )
     if min_hits_frac is not None and not 0.0 <= min_hits_frac < 1.0:
         raise ValueError(f"`min_hits_frac` must be in [0, 1), got {min_hits_frac}.")
@@ -166,7 +180,7 @@ def gls_map(
     inv_noise.check_scan(scan)
 
     # turn None / negative values into a number of threads, and reject 0: the same
-    # number is used by the pointing and the CG
+    # number is used by the pointing and the solver
     workers = _resolve_workers(workers)
 
     # the time-ordered data, (n_samples, n_det)
@@ -221,12 +235,12 @@ def gls_map(
             "are not used"
         )
 
-    # starting point of the CG: the binned map (mean of the used samples of every pixel,
-    # 0 in the pixels without samples)
+    # starting point of the solver: the binned map (mean of the used samples of every
+    # pixel, 0 in the pixels without samples)
     if initial_map is None:
         total = _bin(pixels, valid, n_pixels, values=tod)
         initial_map = np.divide(total, hits, out=np.zeros(n_pixels), where=hits > 0)
-        logger.info("[MAP] Starting the CG from the binned map")
+        logger.info("[MAP] Starting the solver from the binned map")
 
     # the flagged samples are not dropped: they still go through the noise filter, so
     # that it sees a continuous time stream, but they point to one more unknown, the
@@ -256,22 +270,31 @@ def gls_map(
     x[:n_pixels] = initial_map
 
     logger.info(
-        f"[MAPMAKER] Launching CG solver (tol = {tol:.1e}, maxiter = {maxiter})"
+        f"[MAPMAKER] Launching {solver.upper()} solver "
+        f"(tol = {tol:.1e}, maxiter = {maxiter})"
     )
-    n_iter, residual = _conjugate_gradient(b, x, operator, residual_norm, tol, maxiter)
+    solve = _conjugate_gradient if solver == "cg" else _minimal_residual
+    n_iter, residual = solve(b, x, operator, residual_norm, tol, maxiter)
 
     logger.info(
         f"[MAPMAKER] Map-making completed in {time.perf_counter() - start_total:.2f}s "
         f"(steps: {n_iter}, final residual: {residual:.3e})"
     )
 
-    # the CG stopped at maxiter before reaching tol: the map is not the GLS solution yet
-    # (the large scales are the last to converge)
+    # the solver stopped before reaching tol: the map is not the GLS solution yet. At
+    # maxiter more iterations help (the large scales are the last to converge); before
+    # maxiter the solver stopped because the system is singular at double precision
+    # (zero curvature in the CG, breakdown or condition number in MINRES)
     converged = bool(residual <= tol)
     if not converged:
+        hint = (
+            "Increase `maxiter`."
+            if n_iter >= maxiter
+            else "It stopped before `maxiter` for numerical reasons: see the log."
+        )
         _warn(
-            f"The conjugate gradient did not converge: residual {residual:.2e} > tol "
-            f"{tol:.1e} after {n_iter} iterations. Increase `maxiter`.",
+            f"The solver {solver!r} did not converge: residual {residual:.2e} > tol "
+            f"{tol:.1e} after {n_iter} iterations. {hint}",
             RuntimeWarning,
         )
 
@@ -297,6 +320,7 @@ def gls_map(
         weights=weights.reshape(shape),
         converged=converged,
         unit=scan.tod.unit,
+        solver=solver,
     )
 
 

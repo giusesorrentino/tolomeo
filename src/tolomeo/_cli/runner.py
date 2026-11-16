@@ -96,8 +96,8 @@ class RunMapmaker:
             )
 
         header["NPERSEG"] = (inv_noise.nperseg, "Samples per noise block")
-        header["GLSTOL"] = (config.gls.tol, "Tolerance of the CG")
-        header["MAXITER"] = (config.gls.maxiter, "Maximum CG iterations")
+        header["GLSTOL"] = (config.gls.tol, "Tolerance of the solver")
+        header["MAXITER"] = (config.gls.maxiter, "Maximum iterations of the solver")
         if config.gls.min_hits_frac is not None:
             header["MINHITS"] = (config.gls.min_hits_frac, "Min hits / max hits")
 
@@ -190,14 +190,15 @@ class RunMapmaker:
         """
         ``gls_map(scan, geometry, inv_noise, ...)`` with the fields of ``config.gls``.
 
-        ``residual_norm``, ``tol``, ``maxiter``, ``min_hits_frac`` and ``workers`` map one
-        to one onto the arguments of ``gls_map`` (same names).
+        ``solver``, ``residual_norm``, ``tol``, ``maxiter``, ``min_hits_frac`` and
+        ``workers`` map one to one onto the arguments of ``gls_map`` (same names).
         """
         return gls_map(
             scan=scan,
             geometry=geometry,
             inv_noise=inv_noise,
             initial_map=None,
+            solver=self.config.gls.solver,
             residual_norm=self.config.gls.residual_norm,
             tol=self.config.gls.tol,
             maxiter=self.config.gls.maxiter,

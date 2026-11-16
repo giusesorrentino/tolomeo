@@ -15,7 +15,10 @@ NX, NY = 6, 4
 
 
 def _map_result(frame="radec", projection="sin", weights=True, unit="K"):
-    """A MapResult with random maps on a small grid."""
+    """
+    A MapResult with random maps on a small grid. The solver is ``"minres"``, not the
+    default of ``gls_map``, so that a reader that ignores ``SOLVER`` shows up.
+    """
     geometry = MapGeometry(
         nx=NX,
         ny=NY,
@@ -30,6 +33,7 @@ def _map_result(frame="radec", projection="sin", weights=True, unit="K"):
         n_iter=17,
         residual=3.5e-7,
         geometry=geometry,
+        solver="minres",
         weights=rng.random((NY, NX)) if weights else None,
         converged=False,
         unit=unit,
@@ -46,6 +50,7 @@ def _assert_same_map(read, result):
     assert read.n_iter == result.n_iter
     assert read.residual == result.residual
     assert read.converged == result.converged
+    assert read.solver == result.solver
     assert read.unit == result.unit
 
     geometry, expected = read.geometry, result.geometry
@@ -120,11 +125,21 @@ def test_write_map_header_and_extensions(tmp_path):
     with fits.open(path) as hdul:
         assert [hdu.name for hdu in hdul] == ["SCI", "HITS", "WEIGHTS", "CONFIG"]
         assert hdul["SCI"].header["NITER"] == 17
+        assert hdul["SCI"].header["SOLVER"] == "minres"
         assert hdul["SCI"].header["BUNIT"] == "K"
         assert hdul["HITS"].header["BUNIT"] == "count"
         assert all(hdu.header["OBJECT"] == "3C84" for hdu in hdul[:3])
         # the characters that are not ASCII are written as escape sequences
         assert list(hdul["CONFIG"].data["LINE"]) == ["name: run", "note: per\\xf2"]
+
+
+def test_read_map_without_solver_is_cg(tmp_path):
+    # A file written before SOLVER existed was made with the CG, the only solver then.
+    path = tmp_path / "map.fits"
+    write_map(_map_result(), path)
+    fits.delval(path, "SOLVER", ext=0)
+
+    assert read_map(path).solver == "cg"
 
 
 def test_write_map_does_not_overwrite(tmp_path):
