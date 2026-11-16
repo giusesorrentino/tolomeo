@@ -22,6 +22,23 @@ def _polynomials(deg):
     return np.polynomial.polynomial.polyval(x, coeffs).T
 
 
+def _hole_per_detector(width):
+    """One mask per detector, with a hole of ``width`` samples in a different place."""
+    mask = np.ones((N_SAMPLES, N_DET), dtype=bool)
+    for j, start in enumerate(rng.integers(0, N_SAMPLES - width, N_DET)):
+        mask[start : start + width, j] = False
+    return mask
+
+
+def _lstsq_fit(basis, D, mask):
+    """The fit of every detector on its own samples, one numpy lstsq per detector."""
+    coeffs = [
+        np.linalg.lstsq(basis[mask[:, j]], D[mask[:, j], j])[0]
+        for j in range(D.shape[1])
+    ]
+    return basis @ np.column_stack(coeffs)
+
+
 # -----------------------------------------------------------------------------
 # remove_baseline
 # -----------------------------------------------------------------------------
@@ -62,6 +79,37 @@ def test_remove_baseline_mask_keeps_the_source(per_detector):
     np.testing.assert_allclose(out, source, atol=1e-8)
 
 
+@pytest.mark.parametrize("deg", [2, 4])
+def test_remove_baseline_mask_per_detector_matches_lstsq(deg):
+    # Check the normal equations solved for all the detectors at once against one
+    # lstsq per detector. With deg = 2 there are 3 coefficients and 3 detectors, the
+    # case where a transposed result would have the right shape. With Legendre
+    # polynomials cond(G) is about 10: the two fits agree to rounding.
+    D = rng.normal(size=(N_SAMPLES, N_DET)).cumsum(axis=0)
+    mask = _hole_per_detector(60)
+    x = 2 * (T - T.min()) / np.ptp(T) - 1
+    basis = np.polynomial.legendre.legvander(x, deg)
+
+    out = remove_baseline(D, T, deg=deg, mask=mask)
+
+    expected = D - _lstsq_fit(basis, D, mask)
+    np.testing.assert_allclose(out, expected, rtol=0, atol=1e-10 * np.abs(D).max())
+
+
+def test_remove_baseline_too_few_samples_per_detector_warns():
+    # Check that only the detector with fewer background samples than coefficients is
+    # skipped (nothing subtracted, a warning), and the others are fitted.
+    D = _polynomials(2)
+    mask = np.ones((N_SAMPLES, N_DET), dtype=bool)
+    mask[2:, 1] = False
+
+    with pytest.warns(UserWarning, match=r"fits were skipped"):
+        out = remove_baseline(D, T, deg=2, mask=mask)
+
+    np.testing.assert_array_equal(out[:, 1], D[:, 1])
+    np.testing.assert_allclose(out[:, [0, 2]], 0.0, atol=1e-8)
+
+
 def test_remove_baseline_too_few_samples_warns():
     # Check that a fit with fewer background samples than coefficients is skipped:
     # a warning, and nothing is subtracted.
@@ -98,3 +146,22 @@ def test_remove_spline_removes_a_spline():
     out = remove_spline(D, T, knots, order=3)
 
     np.testing.assert_allclose(out, 0.0, atol=1e-8)
+
+
+def test_remove_spline_knot_over_the_hole_warns():
+    # A hole in the mask of detector 0 wider than the support of a basis function
+    # leaves its coefficient without data: G is singular, the fit of that detector goes
+    # to lstsq, which warns. The other detectors are fitted as usual, and detector 0
+    # still fits its own background samples exactly.
+    knots = bspline_knots(T, spacing=np.ptp(T) / 8, order=3)
+    basis = bspline_basis_from_knots(T, knots, order=3)
+    D = basis.T @ rng.normal(size=(basis.shape[0], N_DET))
+    mask = np.ones((N_SAMPLES, N_DET), dtype=bool)
+    mask[N_SAMPLES // 8 : 7 * N_SAMPLES // 8, 0] = False
+
+    with pytest.warns(UserWarning, match=r"not fully constrained"):
+        out = remove_spline(D, T, knots, order=3, mask=mask)
+
+    assert np.isfinite(out).all()
+    np.testing.assert_allclose(out[:, 1:], 0.0, atol=1e-8)
+    np.testing.assert_allclose(out[mask[:, 0], 0], 0.0, atol=1e-8)

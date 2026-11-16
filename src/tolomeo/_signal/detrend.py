@@ -26,6 +26,12 @@ _DEFICIENT = (
     "`tolomeo -v`) shows the numbers."
 )
 
+# largest condition number of the normal equations of a fit with one mask per detector:
+# their error on the coefficients is about eps * cond, 2e-8 here. A fit above it (a
+# coefficient with little data, as a spline knot over the hole of the mask) is done by
+# lstsq on its samples. A choice, not a standard value
+_MAX_GRAM_COND = 1e8
+
 
 def remove_baseline(
     D: NDArray[np.float64],
@@ -130,7 +136,6 @@ def _normalize(a: NDArray) -> NDArray:
     return (a - a.min()) / span
 
 
-# TODO: use ThreadPoolExecutor
 def _masked_lstsq(
     basis: NDArray[np.float64],
     block: NDArray[np.float64],
@@ -159,8 +164,19 @@ def _masked_lstsq(
         samples (``basis @ coeff``), not only on the ones used to find it, so that
         the source is removed from the baseline but not from the signal.
         Shape ``(n_coef, n_det)``.
+
+    Notes
+    -----
+    With one mask per detector, the fits of all the detectors are solved together
+    through their normal equations ``G_j c_j = r_j``, with
+    ``G_j = basis^T diag(m_j) basis`` and ``r_j = basis^T (m_j * d_j)`` (``m_j`` the
+    mask of detector ``j`` as 0 and 1, ``d_j`` its signal): the same solution as a
+    ``lstsq`` for each detector, about ten times faster. The normal equations square
+    the condition number of the fit, which is small for the Legendre polynomials of
+    :func:`remove_baseline`; the detectors with ``cond(G_j) > _MAX_GRAM_COND`` are
+    fitted by ``lstsq`` on their samples, as those with a single mask.
     """
-    n_coef = basis.shape[1]
+    n_t, n_coef = basis.shape
     n_det = block.shape[1]
 
     # no mask: every sample, and all the detectors in a single solve
@@ -200,19 +216,35 @@ def _masked_lstsq(
 
         return coeff
 
-    # one mask per detector: each has its own samples, so one solve for each
+    # one mask per detector: the normal equations of all the detectors at once.
+    # G[j, k, l] = sum_t m[t, j] basis[t, k] basis[t, l] is one matrix product, m^T
+    # times the products of the columns of the basis, (n_t, n_coef**2) values (40 MB
+    # for a spline of 28 functions on 6000 samples); r[j, k] = sum_t m[t, j] d[t, j]
+    # basis[t, k]
+    weights = mask.astype(np.float64)
+    products = (basis[:, :, None] * basis[:, None, :]).reshape(n_t, n_coef * n_coef)
+    gram = (weights.T @ products).reshape(n_det, n_coef, n_coef)
+    rhs = (weights * block).T @ basis  # (n_det, n_coef)
+
+    # fewer samples than coefficients: the fit is skipped, nothing is subtracted
+    skipped = mask.sum(axis=0) < n_coef
+
+    # cond(G_j) from the singular values (in decreasing order): only the well
+    # conditioned systems are solved here, the others go to lstsq below
+    sv = np.linalg.svd(gram, compute_uv=False)  # (n_det, n_coef)
+    solved = ~skipped & (sv[:, -1] * _MAX_GRAM_COND > sv[:, 0])
+
     coeff = np.zeros((n_coef, n_det))
-    n_skipped = n_deficient = 0
+    coeff[:, solved] = np.linalg.solve(gram[solved], rhs[solved][..., None])[..., 0].T
 
-    for j in range(n_det):
+    # lstsq also finds the rank: a coefficient without data is set to 0
+    n_deficient = 0
+    for j in np.flatnonzero(~skipped & ~solved):
         rows = mask[:, j]
-
-        if rows.sum() < n_coef:
-            n_skipped += 1
-            continue
-
         coeff[:, j], _, rank, _ = lstsq(basis[rows], block[rows, j])
         n_deficient += int(rank < n_coef)
+
+    n_skipped = int(skipped.sum())
 
     # one message per call, not one per detector
     if n_skipped:
