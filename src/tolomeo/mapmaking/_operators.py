@@ -379,7 +379,7 @@ def _build_diagonal_preconditioner(
     zero-lag noise weight of each detector: for every sample (flagged ones included,
     they sit in the virtual pixel) add ``lag_zero[det]`` to the pixel it points to. So
     ``diag[p]`` is the weighted number of samples that fall in pixel ``p``. Applying
-    it, ``M^-1 r``, is the ``precondition`` method of ``TemperatureNormalOperator``.
+    it, ``M^-1 r``, is the ``precondition`` method of ``NormalOperator``.
 
     ``lag_zero`` has one value per detector; it is computed by
     ``estimate_inverse_noise``.
@@ -409,22 +409,10 @@ def _build_diagonal_preconditioner(
     for future in futures:
         diag += future.result()
 
-    # for idet in range(n_det):
-    #     # the pixels hit by this detector, one per sample: a contiguous row
-    #     ids = pixels_by_det[idet]
-
-    #     # number of samples of this detector in each pixel. minlength makes the result
-    #     # always have n_unknowns elements, also when the last pixels (the virtual one
-    #     # among them) have no hit, so that it can be added to diag
-    #     counts = np.bincount(ids, minlength=n_unknowns)
-
-    #     # every sample of this detector weighs lag_zero[idet]
-    #     diag += lag_zero[idet] * counts
-
     return diag
 
 
-class TemperatureNormalOperator:
+class NormalOperator:
     """
     ``A = P^T N^-1 P`` and its diagonal preconditioner.
 
@@ -492,7 +480,7 @@ def _normal_equations(
     inv_noise: InverseNoise,
     n_unknowns: int,
     workers: int,
-) -> tuple[TemperatureNormalOperator, NDArray[np.float64]]:
+) -> tuple[NormalOperator, NDArray[np.float64]]:
     """
     The system ``A m = b`` of the GLS map.
 
@@ -535,7 +523,7 @@ def _normal_equations(
     )
     del pointing
 
-    operator = TemperatureNormalOperator(
+    operator = NormalOperator(
         diag=diag,
         layout=layout,
         pixels=pixels,

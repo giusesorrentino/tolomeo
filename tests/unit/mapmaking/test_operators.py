@@ -5,8 +5,8 @@ from tolomeo.mapmaking import InverseNoise
 from tolomeo.mapmaking._blocks import BlockLayout
 from tolomeo.mapmaking._operators import (
     InverseNoiseFilter,
+    NormalOperator,
     PointingOperator,
-    TemperatureNormalOperator,
     _build_diagonal_preconditioner,
     _build_rhs,
     _filter_and_bin,
@@ -50,7 +50,7 @@ def _short_kernel(n_det=N_DET, context_len=NPERSEG // 4):
 
 
 def _operator(pixels, weights, diag=None, workers=1):
-    return TemperatureNormalOperator(
+    return NormalOperator(
         diag=np.ones(N_PIXELS) if diag is None else diag,
         layout=BlockLayout(
             n_samples=pixels.shape[0], n_det=pixels.shape[1], nperseg=NPERSEG
