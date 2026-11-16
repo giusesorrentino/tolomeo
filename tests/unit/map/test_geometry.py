@@ -58,14 +58,18 @@ def test_geometry_is_frozen():
 
 
 def test_to_wcs_radec():
-    # Check the celestial WCS: RA then Dec, CDELT1 negative (east on the left),
-    # centred on the projection centre.
+    # Check the celestial WCS: RA then Dec in FK5 J2000, CDELT1 negative (east on the
+    # left), centred on the projection centre.
     wcs = _geometry().to_wcs()
 
     assert list(wcs.wcs.ctype) == ["RA---SIN", "DEC--SIN"]
     np.testing.assert_allclose(wcs.wcs.cdelt, [-PIXEL_SIZE / 3600, PIXEL_SIZE / 3600])
     np.testing.assert_allclose(wcs.wcs.crval, np.rad2deg([RA0, DEC0]))
     np.testing.assert_allclose(wcs.wcs.crpix, [20 / 2 + 0.5, 10 / 2 + 0.5])
+
+    header = wcs.to_header()
+    assert header["RADESYS"] == "FK5"
+    assert header["EQUINOX"] == 2000.0
 
 
 @pytest.mark.parametrize("projection", ["sin", "tan", "zea"])
@@ -83,6 +87,11 @@ def test_to_wcs_azel():
     assert list(wcs.wcs.ctype) == ["AZOFFSET", "ELOFFSET"]
     np.testing.assert_allclose(wcs.wcs.cdelt, [PIXEL_SIZE / 3600, PIXEL_SIZE / 3600])
     np.testing.assert_allclose(wcs.wcs.crval, [0.0, 0.0])
+
+    # the axes are not celestial: no equatorial frame
+    header = wcs.to_header()
+    assert "RADESYS" not in header
+    assert "EQUINOX" not in header
 
 
 # -----------------------------------------------------------------------------

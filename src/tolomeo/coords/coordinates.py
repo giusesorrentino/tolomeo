@@ -15,12 +15,12 @@ class Coordinates(BaseModel):
     Attributes
     ----------
     ra : :class:`~numpy.ndarray` of float64
-        Right ascension of the telescope boresight at each time sample,
-        in radians, in the ICRS reference frame. Shape: ``(n_samples,)``.
+        Right ascension of the telescope boresight at each time sample, in radians,
+        in the FK5 reference frame (J2000 equinox). Shape: ``(n_samples,)``.
 
     dec : :class:`~numpy.ndarray` of float64
-        Declination of the telescope boresight at each time sample,
-        in radians, in the ICRS reference frame. Shape: ``(n_samples,)``.
+        Declination of the telescope boresight at each time sample, in radians,
+        in the FK5 reference frame (J2000 equinox). Shape: ``(n_samples,)``.
 
     par_angle : :class:`~numpy.ndarray` of float64
         Parallactic angle at each time sample, in radians. It specifies

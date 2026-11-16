@@ -67,9 +67,11 @@ class MapGeometry(BaseModel):
         Returns
         -------
         :class:`astropy.wcs.WCS`
-            ``"radec"``: two celestial axes, RA then Dec, in degrees. ``CDELT1`` is
-            negative: x grows toward the west, so the east is on the left of the image,
-            as in the pixelization.
+            ``"radec"``: two celestial axes, RA then Dec, in degrees, in the FK5 frame
+            with the J2000 equinox (``RADESYS = 'FK5'``, ``EQUINOX = 2000``), the frame
+            of the ``raj2000`` and ``decj2000`` columns of the MISTRAL files. ``CDELT1``
+            is negative: x grows toward the west, so the east is on the left of the
+            image, as in the pixelization.
             ``"azel"``: two linear axes, ``AZOFFSET`` and ``ELOFFSET``, in degrees from
             the centre. x grows with the azimuth, so ``CDELT1`` is positive. The
             orientation of the map on the sky changes along the scan, so this WCS
@@ -89,6 +91,9 @@ class MapGeometry(BaseModel):
         crpix = [self.nx / 2 + 0.5, self.ny / 2 + 0.5]
 
         if self.frame == "radec":
+            wcs.wcs.radesys = "FK5"
+            wcs.wcs.equinox = 2000.0
+
             wcs.wcs.ctype = [f"RA---{proj}", f"DEC--{proj}"]
             wcs.wcs.cunit = ["deg", "deg"]
             wcs.wcs.cdelt = [-step, step]
