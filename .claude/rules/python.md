@@ -23,11 +23,13 @@ paths:
     that defines it, **also when that module is private**, and in the `__all__` of the package `__init__.py` that
     re-exports it. In `mapmaking`: `_maps.py` has `__all__ = ["binned_map", "gls_map"]`, and
     `mapmaking/__init__.py` has `__all__ = ["InverseNoise", "binned_map", "estimate_inverse_noise", "gls_map"]`.
-  - That `__all__` lists **only** the public names. Everything else in the module (helpers, type aliases, constants)
+  - That `__all__` lists **only** the public names. Every other function, type alias and constant of the module
     starts with an underscore and is never in an `__all__`, even when other modules import it (`_pointing_matrix`,
     `_bin`, `_conjugate_gradient`).
+  - Classes are the exception: a class name never starts with an underscore, also when the class is private
+    (`BlockLayout`, `NormalOperator`, `CGOperator`). Whether a class is public is decided only by `__all__`: a private
+    class lives in a private module and is in no `__all__`. Do not add an underscore to a class name.
   - A module that defines no public name has no `__all__` (`_blocks.py`, `_operators.py`, `_pointing.py`, `_solver.py`).
-  - Members of a class whose name starts with an underscore are not renamed: they are already private.
   - Not every module follows these rules yet (for example `InverseNoise` is missing from the `__all__` of `_noise.py`).
     The user knows and will fix them: do not change an `__all__` or rename anything the task does not need, and do
     not point these mismatches out unless the task changes the public names of that module.
