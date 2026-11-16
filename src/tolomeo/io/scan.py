@@ -42,7 +42,7 @@ def read_scan(
     beammap_path: str | Path,
 ) -> Scan:
     """
-    Read MISTRAL subscans and a beammap into a :class:`MISTRALScan`.
+    Read MISTRAL subscans and a beammap into a :class:`~tolomeo.tod.Scan`.
 
     Parameters
     ----------
