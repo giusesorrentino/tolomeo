@@ -61,11 +61,22 @@ class BlockWindow(BaseModel):
     """
     Position of one block in the TOD.
 
-    The block holds the TOD samples ``read_start .. read_end`` at the positions
-    ``left_pad .. left_pad + (read_end - read_start)`` and zeros everywhere else.
-    Its core is the TOD samples ``core_start .. core_end``, found in the block at the
-    positions ``context_len .. context_len + (core_end - core_start)``
-    (:attr:`BlockLayout.context_len`).
+    Every field belongs to one of two coordinate systems:
+
+    * **TOD index** ``t``: the row of the TOD, ``0 .. n_samples``. ``core_start``,
+      ``core_end``, ``read_start`` and ``read_end`` are TOD indices.
+    * **Block position** ``p``: the column of the block buffer, ``0 .. block_len``.
+      ``left_pad`` is a block position, and also a count: the zeros before the first
+      sample that is read.
+
+    The block starts ``context_len`` samples before its core, at the TOD index
+    ``t0 = core_start - context_len`` (negative for the first block): position ``p``
+    holds the sample ``t = t0 + p``, or a zero where ``t`` is outside the TOD. So the
+    first sample read, ``read_start``, lands at ``p = read_start - t0 = left_pad``,
+    and the core always lands at ``p = context_len``, whatever the block.
+
+    Read the TOD and the pixels with TOD indices; index the buffer with block
+    positions.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -142,19 +153,21 @@ class BlockLayout(BaseModel):
 
         ``iblock`` must be in ``0 .. n_blocks``; it is not checked.
         """
-        # the TOD samples this block is responsible for (the last core is shorter)
+        # TOD indices of the samples this block is responsible for (its core); the
+        # last core is shorter
         core_start = iblock * self.core_len
         core_end = min(core_start + self.core_len, self.n_samples)
 
-        # the block starts `context_len` samples before its core: negative for the
-        # first block, where the block sticks out of the TOD on the left
+        # TOD index of position 0 of the block, `context_len` samples before the
+        # core: negative for the first block, which sticks out of the TOD on the left
         read_start_raw = core_start - self.context_len
 
-        # zeros needed before the first real sample (non-zero only for the first block)
+        # block position of the first sample read, i.e. the number of zeros before it
+        # (read_start - read_start_raw); non-zero only for the first block
         left_pad = max(-read_start_raw, 0)
 
-        # the TOD samples that are really read, clipped to the TOD itself (the block
-        # also sticks out on the right for the last blocks: zeros there)
+        # TOD indices of the samples really read: the block, read_start_raw ..
+        # read_start_raw + block_len, clipped to the TOD (zeros past the end)
         read_start = max(read_start_raw, 0)
         read_end = min(read_start_raw + self.block_len, self.n_samples)
 

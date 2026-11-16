@@ -76,21 +76,25 @@ class PointingOperator:
         """
         ``P x`` for one block: shape ``(n_det, block_len)``.
 
-        A new zeroed buffer where the positions ``left_pad .. left_pad + n`` (with
-        ``n = read_end - read_start``) hold ``in_map[pixel]`` for the samples
-        ``read_start .. read_end`` of every detector. The rest of the buffer stays zero
-        (the part of the block that sticks out of the TOD).
+        Reads with TOD indices and writes with block positions (see
+        :class:`BlockWindow`): the pixels of the samples ``read_start .. read_end`` of
+        every detector give ``in_map[pixel]``, which goes to the positions
+        ``left_pad .. left_pad + n`` of a new zeroed buffer, with
+        ``n = read_end - read_start``. The other positions stay zero: they are the part
+        of the block outside the TOD.
         """
         time_buf = np.zeros(shape=(self.layout.n_det, self.layout.block_len))
         n = window.read_end - window.read_start
 
-        # pixels of the samples of this block, (n_det, n): contiguous rows
+        # TOD indices: the pixels of the samples read_start .. read_end, (n_det, n)
         pixels = self.pixels_by_det[:, window.read_start : window.read_end]
 
         # gather: the map value at every one of those pixels, same shape (n_det, n)
         values = in_map[pixels]
 
-        # place them after the left_pad zeros
+        # block positions: sample read_start goes to position left_pad, the next
+        # ones right after it. N.B., left_pad is non-zero only if we are considering
+        # the first block !
         time_buf[:, window.left_pad : window.left_pad + n] = values
 
         return time_buf
@@ -104,26 +108,33 @@ class PointingOperator:
         """
         ``P^T`` for one block: add the core of a filtered block to ``out_map``, in place.
 
-        The core of the block is at the positions ``context_len .. context_len + n``,
-        with ``n = core_end - core_start``, and its samples belong to the pixels of the
-        TOD samples ``core_start .. core_end`` of every detector. Several samples (and
-        several detectors) hit the same pixel, so a plain ``out_map[pixels] += values``
-        would be **wrong** (with repeated indices only one of the additions is kept).
-        ``np.bincount`` with ``weights=`` sums the values that fall in the same pixel;
-        ``np.add.at`` would also be correct but much slower.
+        The reverse of :meth:`map_to_block`: reads with block positions and writes with
+        TOD indices (see :class:`BlockWindow`). Only the core is used: it is at the
+        block positions ``context_len .. context_len + n``, whatever the block, and it
+        holds the TOD samples ``core_start .. core_end``, with
+        ``n = core_end - core_start``. Each value is added to the pixel of its sample.
+        The context positions are dropped: their samples are in the core of a
+        neighbouring block, which adds them.
+
+        Several samples (and several detectors) hit the same pixel, so a plain
+        ``out_map[pixels] += values`` would be **wrong** (with repeated indices only one
+        of the additions is kept). ``np.bincount`` with ``weights=`` sums the values
+        that fall in the same pixel; ``np.add.at`` would also be correct but much
+        slower.
         """
         n = window.core_end - window.core_start
         context_len = self.layout.context_len
 
-        # the core of the filtered block, (n_det, n): it starts `context_len` samples
-        # into the block
+        # block positions: the core, (n_det, n), always starts at context_len; the
+        # context before and after it is dropped
         values = time_buf[:, context_len : context_len + n]
 
-        # the pixels of the same samples, with the same shape (n_det, n)
+        # TOD indices: the pixels of the core samples core_start .. core_end, same shape
+        # (n_det, n), so that values[j, k] belongs to the pixel pixels[j, k]
         pixels = self.pixels_by_det[:, window.core_start : window.core_end]
 
         # values and pixels are flattened in the same order, so that every value stays
-        # paired with its pixel. minlength gives a result as long as the map
+        # paired with its pixel; minlength gives a result as long as the map
         summed = np.bincount(
             pixels.ravel(), weights=values.ravel(), minlength=out_map.size
         )
@@ -230,7 +241,12 @@ class InverseNoiseFilter:
           ``_filter_and_bin``); if every FFT also asked for all the cores, the threads
           would compete for them.
         """
-        # TODO: raise ValueError if time_buf.shape is not (n_det, block_len).
+        n_det, block_len = self.layout.n_det, self.layout.block_len
+        if time_buf.shape != (n_det, block_len):
+            raise ValueError(
+                f"`time_buf` must have shape (n_det, block_len) = ({n_det}, {block_len}), "
+                f"got {time_buf.shape}."
+            )
 
         # spectrum of every detector: (n_det, block_len) -> (n_det, n_freqs), complex
         freq_buf = rfft(time_buf, axis=-1, workers=1, overwrite_x=True)
@@ -416,7 +432,7 @@ class NormalOperator:
     """
     ``A = P^T N^-1 P`` and its diagonal preconditioner.
 
-    This is the object the CG talks to; see ``_solver.CGOperator``.
+    This is the object the solvers talk to; see ``_solver.CGOperator``.
     """
 
     def __init__(
@@ -432,8 +448,9 @@ class NormalOperator:
         Build the ``PointingOperator`` and the ``InverseNoiseFilter`` once, here.
 
         ``diag`` is needed only by ``precondition``. Since ``1 / diag`` does not change
-        during the CG, it is computed once here (``0`` where ``diag == 0``, no ``inf``,
-        no warning) and kept as ``inv_diag``, instead of dividing at every iteration.
+        during the solve, it is computed once here (``0`` where ``diag == 0``, no
+        ``inf``, no warning) and kept as ``inv_diag``, instead of dividing at every
+        iteration.
         ``workers`` is the number of threads of every product ``A x``.
         """
         self.layout = layout
@@ -468,7 +485,7 @@ class NormalOperator:
         """
         ``M^-1 r``: ``r`` divided pixel by pixel by ``diag`` (0 where ``diag == 0``).
 
-        The CG calls it as ``precondition(g)`` to get the preconditioned residual ``h``.
+        The solvers call it on residuals (in the CG, ``precondition(g)`` gives ``h``).
         """
         # one vectorised product by the precomputed 1 / diag, no loop
         return r * self.inv_diag
@@ -485,7 +502,7 @@ def _normal_equations(
     The system ``A m = b`` of the GLS map.
 
     Returns the operator ``A = P^T N^-1 P``, with its diagonal preconditioner (what the
-    CG needs, see ``_solver.CGOperator``), and the right-hand side
+    solvers need, see ``_solver.CGOperator``), and the right-hand side
     ``b = P^T N^-1 d``.
 
     ``tod`` and ``pixels`` are ``(n_samples, n_det)``. ``pixels`` already sends the
