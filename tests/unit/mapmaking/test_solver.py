@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import pytest
 from scipy.sparse.linalg import LinearOperator, minres
@@ -135,6 +137,39 @@ def test_solver_stops_at_maxiter(solve):
 
     assert n_iter == 3
     assert residual > 1e-12
+
+
+@both_solvers
+@pytest.mark.parametrize("residual_norm", NORMS)
+def test_solver_without_steps_returns_the_starting_residual(solve, residual_norm):
+    # With maxiter = 0 no step is done: x does not change and the residual is the one
+    # of the starting point (the CG returned 0, so the map looked converged)
+    operator = _MatrixOperator(_spd_matrix())
+    b = rng.standard_normal(N)
+    start = rng.standard_normal(N)
+    x = start.copy()
+
+    n_iter, residual = solve(b, x, operator, residual_norm, tol=1e-10, maxiter=0)
+
+    assert n_iter == 0
+    np.testing.assert_array_equal(x, start)
+    expected = _relative_residual(operator, b, start, residual_norm)
+    assert np.isclose(residual, expected, rtol=1e-10)
+    assert residual > 1e-10
+
+
+@both_solvers
+def test_solver_logs_the_starting_residual(solve, caplog, monkeypatch):
+    # Step 0 is the residual of the starting point, written like the other steps. The
+    # "tolomeo" logger does not pass its messages on to the root one, where caplog reads
+    monkeypatch.setattr(logging.getLogger("tolomeo"), "propagate", True)
+    b = rng.standard_normal(N)
+
+    with caplog.at_level(logging.INFO, logger="tolomeo"):
+        solve(b, np.zeros(N), _MatrixOperator(_spd_matrix()), "plain", 1e-10, 3)
+
+    # from x = 0 the relative residual is |b| / |b| = 1
+    assert "step    0/3 ▸ residual = 1.000e+00" in caplog.text
 
 
 @both_solvers

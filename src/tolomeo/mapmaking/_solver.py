@@ -52,9 +52,6 @@ def _conjugate_gradient(
         """Log the time since the start of the CG, as the Rust backend does."""
         logger.info(f"Total time was {time.perf_counter() - start_time:.5e} seconds.")
 
-    # last completed iteration and its residual, returned if the loop ends early
-    n_iter, res = 0, 0.0
-
     # g = A x - b is the residual; h = M^-1 g is the preconditioned residual
     g = operator.project(x) - b
     h = operator.precondition(g)
@@ -89,15 +86,22 @@ def _conjugate_gradient(
         log_total_time()
         return 0, 0.0
 
+    # last completed iteration and its residual, returned if the loop ends early: with
+    # no step done (maxiter = 0, or zero curvature at the first step) they are those
+    # of the starting point
+    n_iter, res = 0, float(this_norm / ref_norm)
+
+    # step 0: the residual of the starting point, written like the steps of the loop
+    logger.info(f"[CG {0:3.0f}%] step {0:4d}/{maxiter} ▸ residual = {res:.3e}")
+
     # the starting point may already be good enough
-    err = this_norm / ref_norm
-    if err <= tol:
+    if res <= tol:
         logger.info(
             f"Conjugate Gradient: Initial guess satisfies tolerance "
-            f"({err:.3e} <= {tol:.3e})."
+            f"({res:.3e} <= {tol:.3e})."
         )
         log_total_time()
-        return 0, float(err)
+        return 0, res
 
     # first search direction: steepest descent on the preconditioned residual
     d = -h
@@ -245,6 +249,9 @@ def _minimal_residual(
 
     # last completed iteration and its residual, returned if the loop ends early
     n_iter, res = 0, float(this_norm / ref_norm)
+
+    # step 0: the residual of the starting point, written like the steps of the loop
+    logger.info(f"[MINRES {0:3.0f}%] step {0:4d}/{maxiter} ▸ residual = {res:.3e}")
 
     # the starting point may already be good enough; with beta_1 = 0 (r != 0 is
     # possible only if M^-1 is singular) there is no Krylov space to search
