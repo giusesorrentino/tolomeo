@@ -337,7 +337,9 @@ class RunConfig(BaseModel):
             output = OutputConfig(**raw_output)
 
             # the slow part (it reads the data) comes after what does not need it
-            scan = read_scan(tod_dirs=specs, beammap_path=beammap)
+            scan = read_scan(
+                tod_dirs=specs, beammap_path=beammap, channels=raw_scan.get("channels")
+            )
 
             # the `geometry` field is optional (uses the default values)
             raw_geometry = raw.get("geometry") or {}

@@ -40,6 +40,7 @@ class SubScan(NamedTuple):
 def read_scan(
     tod_dirs: str | Path | ScanSpec | Sequence[str | Path | ScanSpec],
     beammap_path: str | Path,
+    channels: int | Sequence[int] | None = None,
 ) -> Scan:
     """
     Read MISTRAL subscans and a beammap into a :class:`~tolomeo.tod.Scan`.
@@ -51,6 +52,10 @@ def read_scan(
     beammap_path : str or :class:`~pathlib.Path`
         Beammap text file, with columns id, lon and lat offsets (deg), two
         columns not used here and a flag (0 = good detector).
+    channels : int, sequence of int or None, optional
+        Good detectors of the beammap to read: None (default) reads all of
+        them, an int ``n`` the first ``n`` by id, a sequence the detectors with
+        those ids (the ``XXX`` of the ``chp_XXX`` columns).
 
     Returns
     -------
@@ -65,7 +70,8 @@ def read_scan(
     FileNotFoundError
         If no FITS file is found.
     ValueError
-        If the beammap has no good detector or a subscan is inconsistent.
+        If the beammap has no good detector, `channels` is not valid or a
+        subscan is inconsistent.
     """
     dirs = [tod_dirs] if isinstance(tod_dirs, (str, Path, ScanSpec)) else tod_dirs
     dirs = [ScanSpec(path=d) if not isinstance(d, ScanSpec) else d for d in dirs]
@@ -86,6 +92,12 @@ def read_scan(
         raise FileNotFoundError("No FITS subscans found in the given directories.")
 
     detector_ids, lon_offset, lat_offset = _read_beammap(beammap_path)
+    keep = _select_detectors(detector_ids, channels)
+
+    detector_ids = detector_ids[keep]
+    lon_offset = lon_offset[keep]
+    lat_offset = lat_offset[keep]
+
     columns = [f"chp_{i:03d}" for i in detector_ids]
 
     workers = os.cpu_count() or 1
@@ -243,3 +255,42 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
             az=az,
             el=el,
         )
+
+
+def _select_detectors(
+    detector_ids: NDArray[np.integer],
+    channels: int | Sequence[int] | None,
+) -> NDArray[np.bool_]:
+    """
+    Which of the good detectors of the beammap to read.
+
+    Parameters
+    ----------
+    detector_ids : :class:`~numpy.ndarray` of int
+        Ids of the good detectors, sorted (as returned by :func:`_read_beammap`).
+        Shape ``(n_det,)``.
+    channels : int, sequence of int or None
+        None keeps all of them; an int ``n`` keeps the first ``n`` by id; a
+        sequence keeps the detectors with those ids.
+
+    Returns
+    -------
+    :class:`~numpy.ndarray` of bool
+        True for the detectors to read. Shape ``(n_det,)``.
+
+    Raises
+    ------
+    ValueError
+        If ``n`` is smaller than 1, or an id is not a good detector of the beammap.
+    """
+    if channels is None:
+        return np.ones(detector_ids.size, dtype=bool)
+    if isinstance(channels, int):  # the first n good detectors, by id
+        if channels < 1:
+            raise ValueError(f"`channels` must be at least 1, got {channels}.")
+        return np.arange(detector_ids.size) < channels
+    wanted = np.asarray(channels, dtype=int)
+    missing = np.setdiff1d(wanted, detector_ids)
+    if missing.size:  # a typo must not silently drop a detector
+        raise ValueError(f"not good detectors of the beammap: {missing.tolist()}")
+    return np.isin(detector_ids, wanted)
