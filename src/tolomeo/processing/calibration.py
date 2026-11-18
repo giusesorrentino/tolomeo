@@ -30,8 +30,8 @@ def skydip_responsivity(
     ----------
     skydips : sequence of :class:`~tolomeo.io.skydip.SkyDip`
         From :func:`~tolomeo.io.read_skydip`. The result is in the order of the
-        ``detector_ids`` given to it, which for :func:`calibrate` must be
-        ``scan.detector_ids``.
+        ``channel_ids`` given to it, which for :func:`calibrate` must be
+        ``scan.channel_ids``.
     T_atm : float
         Temperature of the atmosphere, in kelvin.
         Default ``267``.
@@ -94,7 +94,7 @@ def calibrate(
     scan : :class:`~tolomeo.tod.Scan`
         Data to calibrate. It is not modified.
     responsivity : :class:`~numpy.ndarray`
-        From :func:`skydip_responsivity`, in the order of ``scan.detector_ids``.
+        From :func:`skydip_responsivity`, in the order of ``scan.channel_ids``.
         Shape ``(n_det,)``.
     tau_atm : float, optional
         If given, the signal is also divided by ``exp(-tau_atm * airmass)``, the
@@ -125,7 +125,7 @@ def calibrate(
 
     invalid = ~np.isfinite(responsivity) | (responsivity == 0)
     if invalid.any():
-        ids = [scan.detector_ids[i] for i in np.flatnonzero(invalid)]
+        ids = [scan.channel_ids[i] for i in np.flatnonzero(invalid)]
         raise ValueError(
             f"{invalid.sum()} of {n_det} detectors have a zero or non-finite "
             f"responsivity (ids: {ids[:10]}{'...' if len(ids) > 10 else ''})."

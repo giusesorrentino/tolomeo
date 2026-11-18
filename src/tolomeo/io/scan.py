@@ -91,14 +91,14 @@ def read_scan(
     if not fits_files:
         raise FileNotFoundError("No FITS subscans found in the given directories.")
 
-    detector_ids, lon_offset, lat_offset = _read_beammap(beammap_path)
-    keep = _select_detectors(detector_ids, channels)
+    channel_ids, lon_offset, lat_offset = _read_beammap(beammap_path)
+    keep = _select_detectors(channel_ids, channels)
 
-    detector_ids = detector_ids[keep]
+    channel_ids = channel_ids[keep]
     lon_offset = lon_offset[keep]
     lat_offset = lat_offset[keep]
 
-    columns = [f"chp_{i:03d}" for i in detector_ids]
+    columns = [f"chp_{i:03d}" for i in channel_ids]
 
     workers = os.cpu_count() or 1
     futures = []
@@ -133,7 +133,7 @@ def read_scan(
         tod=tod,
         coordinates=coords,
         offsets=offsets,
-        detector_ids=detector_ids.tolist(),
+        channel_ids=channel_ids.tolist(),
     )
 
 
@@ -175,16 +175,16 @@ def _read_beammap(
     ids, lon_offset, lat_offset, kid_flag = beammap[:, [0, 1, 2, 5]].T
     good = kid_flag == 0
 
-    detector_ids = ids[good].astype(int)
-    if detector_ids.size == 0:
+    channel_ids = ids[good].astype(int)
+    if channel_ids.size == 0:
         raise ValueError("the beammap contains no good detectors.")
-    if np.unique(detector_ids).size != detector_ids.size:
+    if np.unique(channel_ids).size != channel_ids.size:
         raise ValueError("duplicate detector ids in the beammap.")
 
-    order = np.argsort(detector_ids)  # same ordering as mistral2roma
+    order = np.argsort(channel_ids)  # same ordering as mistral2roma
 
     return (
-        detector_ids[order],
+        channel_ids[order],
         np.deg2rad(lon_offset[good][order]),
         np.deg2rad(lat_offset[good][order]),
     )
@@ -258,7 +258,7 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
 
 
 def _select_detectors(
-    detector_ids: NDArray[np.integer],
+    channel_ids: NDArray[np.integer],
     channels: int | Sequence[int] | None,
 ) -> NDArray[np.bool_]:
     """
@@ -266,7 +266,7 @@ def _select_detectors(
 
     Parameters
     ----------
-    detector_ids : :class:`~numpy.ndarray` of int
+    channel_ids : :class:`~numpy.ndarray` of int
         Ids of the good detectors, sorted (as returned by :func:`_read_beammap`).
         Shape ``(n_det,)``.
     channels : int, sequence of int or None
@@ -284,13 +284,13 @@ def _select_detectors(
         If ``n`` is smaller than 1, or an id is not a good detector of the beammap.
     """
     if channels is None:
-        return np.ones(detector_ids.size, dtype=bool)
+        return np.ones(channel_ids.size, dtype=bool)
     if isinstance(channels, int):  # the first n good detectors, by id
         if channels < 1:
             raise ValueError(f"`channels` must be at least 1, got {channels}.")
-        return np.arange(detector_ids.size) < channels
+        return np.arange(channel_ids.size) < channels
     wanted = np.asarray(channels, dtype=int)
-    missing = np.setdiff1d(wanted, detector_ids)
+    missing = np.setdiff1d(wanted, channel_ids)
     if missing.size:  # a typo must not silently drop a detector
         raise ValueError(f"not good detectors of the beammap: {missing.tolist()}")
-    return np.isin(detector_ids, wanted)
+    return np.isin(channel_ids, wanted)

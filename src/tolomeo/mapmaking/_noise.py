@@ -74,7 +74,7 @@ class InverseNoise(BaseModel):
     ----------
     inv_noiseps : :class:`~numpy.ndarray` of float64
         One inverse spectrum per column: the ``n_det`` auto-spectra first, in the order
-        of ``detector_ids``, then the cross-spectra (if any).
+        of ``channel_ids``, then the cross-spectra (if any).
         Shape ``(n_freqs, n_cols)``, with ``n_freqs = nperseg // 2 + 1``.
     det_pairs : :class:`~numpy.ndarray` of uintp
         The two detectors of every column of ``inv_noiseps``.
@@ -85,9 +85,9 @@ class InverseNoise(BaseModel):
         Shape ``(n_det,)``.
     sample_rate : float
         Sampling frequency of the TOD the spectra come from, in Hz.
-    detector_ids : list of int
+    channel_ids : list of int
         Beammap id of every detector, in the order of the auto-spectra (the same as
-        ``scan.detector_ids``).
+        ``scan.channel_ids``).
     passband : 2-tuple of float or None
         Band of the marginalization in Hz: outside it the inverse spectra are almost
         zero. None means no marginalization.
@@ -102,7 +102,7 @@ class InverseNoise(BaseModel):
     det_pairs: NDArray[np.uintp]  # shape (n_cols, 2)
     lag_zero: NDArray[np.float64]  # shape (n_det,)
     sample_rate: float  # [Hz]
-    detector_ids: list[int]
+    channel_ids: list[int]
     passband: tuple[float, float] | None = None  # [Hz]
     filters: tuple[FrequencyFilter, ...] = ()
 
@@ -117,8 +117,8 @@ class InverseNoise(BaseModel):
 
     @property
     def n_det(self) -> int:
-        """Number of detectors (the length of ``detector_ids``)."""
-        return len(self.detector_ids)
+        """Number of detectors (the length of ``channel_ids``)."""
+        return len(self.channel_ids)
 
     @property
     def freqs(self) -> NDArray[np.float64]:
@@ -145,8 +145,8 @@ class InverseNoise(BaseModel):
             If the detectors differ, also only in their order, or if the sampling
             frequencies differ.
         """
-        scan_ids = list(scan.detector_ids)
-        model_ids = list(self.detector_ids)
+        scan_ids = list(scan.channel_ids)
+        model_ids = list(self.channel_ids)
 
         if len(model_ids) != len(scan_ids):
             raise ValueError(
@@ -272,7 +272,7 @@ def estimate_inverse_noise(
         det_pairs=det_pairs,
         lag_zero=lag_zero,
         sample_rate=sample_rate,
-        detector_ids=scan.detector_ids,
+        channel_ids=scan.channel_ids,
         passband=passband,
         filters=tuple(filters),
     )

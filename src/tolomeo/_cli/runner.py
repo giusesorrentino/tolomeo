@@ -120,7 +120,7 @@ class RunMapmaker:
         t0 = time.perf_counter()
         logger.info("[CALIBRATION] Starting the skydip calibration")
 
-        skydips = read_skydip(calibration.skydip_dir, scan.detector_ids)
+        skydips = read_skydip(calibration.skydip_dir, scan.channel_ids)
         responsivity = skydip_responsivity(
             skydips,
             T_atm=calibration.T_atm,

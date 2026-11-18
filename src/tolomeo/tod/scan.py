@@ -57,7 +57,7 @@ class Scan(BaseModel):
     offsets : dict of str to :class:`~numpy.ndarray` of float64
         ``"lon"`` and ``"lat"``: offset of every detector from the boresight in the
         focal plane, in radians. Each of shape ``(n_det,)``.
-    detector_ids : list of int
+    channel_ids : list of int
         Beammap id of every detector, in the order of the columns of the signal.
         Length ``n_det``.
     telescope : str, optional
@@ -74,7 +74,7 @@ class Scan(BaseModel):
     tod: TimeOrderedData
     coordinates: Coordinates
     offsets: dict[str, NDArray[np.float64]]
-    detector_ids: list[int]
+    channel_ids: list[int]
     telescope: str | None = "SRT"
     instrument: str | None = "MISTRAL"
 
@@ -91,7 +91,7 @@ class Scan(BaseModel):
         Returns
         -------
         :class:`~tolomeo.tod.Scan`
-            A new scan; ``offsets`` and ``detector_ids`` are shared, not copied.
+            A new scan; ``offsets`` and ``channel_ids`` are shared, not copied.
         """
         return self.model_copy(
             update={

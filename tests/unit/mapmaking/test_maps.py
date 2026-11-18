@@ -14,14 +14,14 @@ GEOMETRY = MapGeometry(nx=24, ny=18, pixel_size=PIXEL_SIZE, center=(RA0, DEC0))
 
 def _white_inverse_noise(scan, level=None):
     """Noise model with flat inverse spectra: ``N^-1`` is ``level`` times one."""
-    n_det = len(scan.detector_ids)
+    n_det = len(scan.channel_ids)
     level = np.ones(n_det) if level is None else np.asarray(level)
     return InverseNoise(
         inv_noiseps=np.tile(level, (NPERSEG // 2 + 1, 1)),
         det_pairs=np.array([(j, j) for j in range(n_det)], dtype=np.uintp),
         lag_zero=level.copy(),
         sample_rate=scan.tod.sample_rate,
-        detector_ids=scan.detector_ids,
+        channel_ids=scan.channel_ids,
     )
 
 
@@ -32,7 +32,7 @@ def _colored_inverse_noise(scan):
     zero at ``f = 0``. With it ``A`` is (nearly) symmetric and positive definite, so the
     CG and MINRES converge to the same map.
     """
-    n_det = len(scan.detector_ids)
+    n_det = len(scan.channel_ids)
     freqs = np.fft.rfftfreq(NPERSEG, d=1 / scan.tod.sample_rate)
     f_knee = 0.1 * freqs[-1]
     level = 1 / (1 + (f_knee / np.maximum(freqs, freqs[1] / 2)) ** 2)
@@ -41,7 +41,7 @@ def _colored_inverse_noise(scan):
         det_pairs=np.array([(j, j) for j in range(n_det)], dtype=np.uintp),
         lag_zero=np.full(n_det, np.fft.irfft(level, n=NPERSEG)[0]),
         sample_rate=scan.tod.sample_rate,
-        detector_ids=scan.detector_ids,
+        channel_ids=scan.channel_ids,
     )
 
 

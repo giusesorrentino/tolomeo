@@ -28,7 +28,7 @@ class SkyDip(NamedTuple):
     signal: NDArray[np.float64]  # (n_samples, n_det), raw units
 
 
-def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDip]:
+def read_skydip(gain_dir: str | Path, channel_ids: Sequence[int]) -> list[SkyDip]:
     """
     Read the skydip FITS files of a directory, or a single one.
 
@@ -36,8 +36,8 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
     ----------
     gain_dir : str or :class:`~pathlib.Path`
         Directory with the ``GAIN_CAL`` FITS files, or the path of a single FITS file.
-    detector_ids : sequence of int
-        Detectors to read, for example ``scan.detector_ids``. Their columns are
+    channel_ids : sequence of int
+        Detectors to read, for example ``scan.channel_ids``. Their columns are
         ``chp_000``, ``chp_001``, ... in the ``"PH TABLE"``.
 
     Returns
@@ -48,7 +48,7 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
         warning that lists its name, if it is empty or truncated, if it lacks one of
         the two tables, if they have a different number of rows, or if it has fewer
         than 20 valid samples. The columns of ``signal`` are in the order of
-        ``detector_ids``.
+        ``channel_ids``.
 
     Raises
     ------
@@ -72,7 +72,7 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
 
     with ProcessPoolExecutor(max_workers=workers) as executor:
         futures = [
-            executor.submit(_read_skydip_file, file, detector_ids) for file in files
+            executor.submit(_read_skydip_file, file, channel_ids) for file in files
         ]
         results = [future.result() for future in futures]
 
@@ -95,7 +95,7 @@ def read_skydip(gain_dir: str | Path, detector_ids: Sequence[int]) -> list[SkyDi
     return used
 
 
-def _read_skydip_file(file: Path, detector_ids: Sequence[int]) -> SkyDip | None:
+def _read_skydip_file(file: Path, channel_ids: Sequence[int]) -> SkyDip | None:
     """
     Read one skydip FITS file, or return None if it has to be skipped.
 
@@ -107,7 +107,7 @@ def _read_skydip_file(file: Path, detector_ids: Sequence[int]) -> SkyDip | None:
     file : :class:`~pathlib.Path`
         The FITS file, with a ``"DATA TABLE"`` (elevation, flags) and a
         ``"PH TABLE"`` (one column per detector) of the same length.
-    detector_ids : sequence of int
+    channel_ids : sequence of int
         Detectors to read, in the output order. Their columns are ``chp_000``,
         ``chp_001``, ... in the ``"PH TABLE"``.
 
@@ -116,7 +116,7 @@ def _read_skydip_file(file: Path, detector_ids: Sequence[int]) -> SkyDip | None:
     :class:`SkyDip` or None
         None if the file has to be skipped (see :func:`read_skydip`).
     """
-    columns = [f"chp_{i:03d}" for i in detector_ids]
+    columns = [f"chp_{i:03d}" for i in channel_ids]
 
     try:
         hdul = fits.open(file, memmap=False)

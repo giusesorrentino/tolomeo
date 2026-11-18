@@ -23,7 +23,7 @@ def _skydip_data(n_samples=N_SAMPLES):
 
 def test_read_skydip_directory(tmp_path):
     # Check that every file is read, in the order of the names, with the columns in
-    # the order of `detector_ids`.
+    # the order of `channel_ids`.
     first, second = _skydip_data(), _skydip_data()
     write_skydip(tmp_path / "b.fits", *second, DETECTOR_IDS)
     write_skydip(tmp_path / "a.fits", *first, DETECTOR_IDS)

@@ -55,7 +55,7 @@ scan = Scan(
         el=np.full(n_samples, 0.8),
     ),
     offsets={"lon": np.array([-5.0, 0.0, 5.0]) * arcsec, "lat": np.zeros(n_det)},
-    detector_ids=[1, 2, 3],
+    channel_ids=[1, 2, 3],
 )
 
 geometry = MapGeometry.from_scan(scan, pixel_size=10.0)

@@ -65,7 +65,7 @@ def test_scan_select_keeps_tod_and_pointing_together():
 
     np.testing.assert_array_equal(selected.tod.signal, scan.tod.signal[mask])
     np.testing.assert_array_equal(selected.coordinates.ra, scan.coordinates.ra[mask])
-    assert selected.detector_ids == scan.detector_ids
+    assert selected.channel_ids == scan.channel_ids
 
 
 # -----------------------------------------------------------------------------

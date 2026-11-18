@@ -45,7 +45,7 @@ def test_read_scan_round_trip(tmp_path):
         np.testing.assert_array_equal(
             getattr(read.coordinates, name), getattr(scan.coordinates, name)
         )
-    assert read.detector_ids == scan.detector_ids
+    assert read.channel_ids == scan.channel_ids
     np.testing.assert_allclose(read.offsets["lon"], scan.offsets["lon"], rtol=1e-14)
     np.testing.assert_allclose(read.offsets["lat"], scan.offsets["lat"], rtol=1e-14)
 
@@ -124,7 +124,7 @@ def test_read_scan_beammap_flags_and_order(tmp_path):
 
     read = read_scan(tod_dir, beammap)
 
-    assert read.detector_ids == [3, 7, 12]
+    assert read.channel_ids == [3, 7, 12]
     np.testing.assert_allclose(read.offsets["lon"], OFFSETS_LON[:3], rtol=1e-14)
     np.testing.assert_allclose(read.offsets["lat"], OFFSETS_LAT[:3], rtol=1e-14)
     np.testing.assert_array_equal(read.tod.signal, scan.tod.signal[:, :3])
@@ -138,7 +138,7 @@ def test_read_scan_beammap_with_one_detector(tmp_path):
 
     read = read_scan(tod_dir, beammap)
 
-    assert read.detector_ids == [7]
+    assert read.channel_ids == [7]
     np.testing.assert_array_equal(read.tod.signal, scan.tod.signal[:, 1:2])
 
 

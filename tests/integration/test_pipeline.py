@@ -119,7 +119,7 @@ def test_calibrated_pipeline_in_kelvin(tmp_path):
     write_skydip(cal_dir / "skydip.fits", el, skydip, DETECTOR_IDS)
 
     scan = _sky_scan(gain=responsivity)
-    skydips = read_skydip(cal_dir, scan.detector_ids)
+    skydips = read_skydip(cal_dir, scan.channel_ids)
     calibrated = calibrate(
         scan, skydip_responsivity(skydips, T_atm=t_atm, tau_atm=tau_atm)
     )

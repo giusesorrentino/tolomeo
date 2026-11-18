@@ -139,7 +139,7 @@ def make_scan(
         tod=tod,
         coordinates=coords,
         offsets={"lon": OFFSETS_LON[:n_det].copy(), "lat": OFFSETS_LAT[:n_det].copy()},
-        detector_ids=DETECTOR_IDS[:n_det],
+        channel_ids=DETECTOR_IDS[:n_det],
     )
 
 
@@ -185,7 +185,7 @@ def write_subscan(path, scan, start, stop, angle_unit="rad"):
             fits.Column(
                 name=f"chp_{det:03d}", format="D", array=scan.tod.signal[rows, j]
             )
-            for j, det in enumerate(scan.detector_ids)
+            for j, det in enumerate(scan.channel_ids)
         ],
         name="PH TABLE",
     )
@@ -220,11 +220,11 @@ def write_scan_dir(folder, scan):
         write_subscan(tod_dir / f"subscan_{k:03d}.fits", scan, start, stop)
 
     beammap = folder / "beammap.dat"
-    write_beammap(beammap, scan.detector_ids, scan.offsets["lon"], scan.offsets["lat"])
+    write_beammap(beammap, scan.channel_ids, scan.offsets["lon"], scan.offsets["lat"])
     return tod_dir, beammap
 
 
-def write_skydip(path, el, signal, detector_ids, flags=None):
+def write_skydip(path, el, signal, channel_ids, flags=None):
     """Write a skydip FITS file: elevation (radians) and one column per detector."""
     flags = np.ones(el.size, dtype=np.int16) if flags is None else flags
     data_table = fits.BinTableHDU.from_columns(
@@ -237,7 +237,7 @@ def write_skydip(path, el, signal, detector_ids, flags=None):
     ph_table = fits.BinTableHDU.from_columns(
         [
             fits.Column(name=f"chp_{det:03d}", format="D", array=signal[:, j])
-            for j, det in enumerate(detector_ids)
+            for j, det in enumerate(channel_ids)
         ],
         name="PH TABLE",
     )

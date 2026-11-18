@@ -33,7 +33,7 @@ def _inverse_noise(n_det=4, nperseg=16, sample_rate=SAMPLE_RATE):
         det_pairs=np.array([(j, j) for j in range(n_det)], dtype=np.uintp),
         lag_zero=np.ones(n_det),
         sample_rate=sample_rate,
-        detector_ids=[3, 7, 12, 20][:n_det],
+        channel_ids=[3, 7, 12, 20][:n_det],
     )
 
 
@@ -59,9 +59,9 @@ def test_inverse_noise_check_scan_accepts_its_scan():
 @pytest.mark.parametrize(
     "update, match",
     [
-        ({"detector_ids": [3, 7, 12]}, r"has 3 detectors and the scan 4"),
+        ({"channel_ids": [3, 7, 12]}, r"has 3 detectors and the scan 4"),
         (
-            {"detector_ids": [3, 12, 7, 20]},
+            {"channel_ids": [3, 12, 7, 20]},
             r"at position 1 the model has 12 and the scan 7",
         ),
         ({"sample_rate": 100.0}, r"estimated at 100.0 Hz"),
@@ -105,7 +105,7 @@ def test_estimate_inverse_noise_outputs():
     inv_noise = estimate_inverse_noise(scan, nperseg=128, workers=2)
 
     assert inv_noise.nperseg == 128
-    assert inv_noise.detector_ids == scan.detector_ids
+    assert inv_noise.channel_ids == scan.channel_ids
     assert inv_noise.sample_rate == scan.tod.sample_rate
     np.testing.assert_array_equal(inv_noise.det_pairs, [(j, j) for j in range(4)])
     np.testing.assert_allclose(

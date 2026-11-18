@@ -301,7 +301,7 @@ def test_normal_equations():
         det_pairs=AUTO_PAIRS,
         lag_zero=lag_zero,
         sample_rate=244.0,
-        detector_ids=[3, 7, 12],
+        channel_ids=[3, 7, 12],
     )
 
     operator, b = _normal_equations(tod, pixels, inv_noise, N_PIXELS, workers=1)
