@@ -51,8 +51,8 @@ class RunMapmaker:
                 f"{out.path} already exists: set `output.overwrite: true` to replace it."
             )
 
-        scan = self._calibrate(self.config.scan)
-        scan = self._clean(scan, self.config.geometry)
+        scan = self._clean(self.config.scan, self.config.geometry)
+        scan = self._calibrate(scan)
         inv_noise = self._estimate_noise(scan)
         # after the noise estimate: NPERSEG is the value used, also when it is automatic
         header = self._header(self.config.scan, inv_noise)
@@ -110,7 +110,7 @@ class RunMapmaker:
 
         ``read_skydip``, then ``skydip_responsivity`` and ``calibrate``. Without a
         ``calibration`` section it returns ``scan`` itself; otherwise a new scan, and
-        ``config.scan`` keeps the raw signal.
+        ``scan`` keeps the signal before the calibration.
         """
         calibration = self.config.calibration
 

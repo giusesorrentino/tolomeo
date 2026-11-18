@@ -89,6 +89,9 @@ def calibrate(
     """
     Divide the signal of every detector by its responsivity.
 
+    The TOD must be cleaned first (:func:`~tolomeo.processing.process_tod`) and
+    calibrated after.
+
     Parameters
     ----------
     scan : :class:`~tolomeo.tod.Scan`
@@ -101,8 +104,7 @@ def calibrate(
         transmission of the atmosphere at the elevation of each sample, so that the
         result is the temperature of the source above the atmosphere. A sample whose
         elevation is not valid (not finite or not positive) is only divided by the
-        responsivity: it has no valid pointing and is dropped later by
-        :func:`~tolomeo.processing.process_tod`. Default None: only the responsivity.
+        responsivity.
 
     Returns
     -------
