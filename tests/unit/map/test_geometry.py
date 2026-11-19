@@ -116,19 +116,23 @@ def test_from_beam_pixel_size(beam_fwhm):
 @pytest.mark.parametrize("par_angle", [0.0, 0.6])
 def test_from_scan_covers_every_detector(frame, par_angle):
     # Check that every sample of every detector falls inside the map, and inside the
-    # margin of empty pixels along both axes.
-    margin = 2
+    # margin of empty pixels along both axes: the pixels added on each side with
+    # respect to the map with no margin.
     scan = make_scan(par_angle=par_angle)
+    bare = MapGeometry.from_scan(scan, pixel_size=PIXEL_SIZE, frame=frame, margin=0)
     geometry = MapGeometry.from_scan(
-        scan, pixel_size=PIXEL_SIZE, frame=frame, margin=margin
+        scan, pixel_size=PIXEL_SIZE, frame=frame, margin=0.2
     )
+    border_x = (geometry.nx - bare.nx) // 2
+    border_y = (geometry.ny - bare.ny) // 2
 
     pixels, valid = _pointing_matrix(scan.coordinates, scan.offsets, geometry)
     ix, iy = pixels % geometry.nx, pixels // geometry.nx
 
     assert valid.all()
-    assert margin <= ix.min() and ix.max() <= geometry.nx - margin - 1
-    assert margin <= iy.min() and iy.max() <= geometry.ny - margin - 1
+    assert border_x > 0 and border_y > 0
+    assert border_x <= ix.min() and ix.max() <= geometry.nx - border_x - 1
+    assert border_y <= iy.min() and iy.max() <= geometry.ny - border_y - 1
 
 
 def test_from_scan_default_center_is_the_scan_center():
@@ -139,14 +143,25 @@ def test_from_scan_default_center_is_the_scan_center():
     np.testing.assert_allclose(geometry.center, scan.center)
 
 
-def test_from_scan_margin_adds_pixels():
+@pytest.mark.parametrize("margin", [0.05, 0.1, 0.5, 1.0])
+def test_from_scan_margin_adds_a_fraction_of_the_half_size(margin):
+    # Check that a fraction `margin` of the half-size, rounded up to whole pixels, is
+    # added on each side, so that nx and ny stay even.
     scan = make_scan()
 
     small = MapGeometry.from_scan(scan, pixel_size=PIXEL_SIZE, margin=0)
-    large = MapGeometry.from_scan(scan, pixel_size=PIXEL_SIZE, margin=5)
+    large = MapGeometry.from_scan(scan, pixel_size=PIXEL_SIZE, margin=margin)
 
-    assert large.nx - small.nx == 10
-    assert large.ny - small.ny == 10
+    for n_small, n_large in ((small.nx, large.nx), (small.ny, large.ny)):
+        half = n_small // 2
+        assert n_large == 2 * (half + int(np.ceil(margin * half)))
+        assert n_large % 2 == 0
+
+
+@pytest.mark.parametrize("margin", [-0.1, 1.5])
+def test_from_scan_margin_out_of_range_raises(margin):
+    with pytest.raises(ValueError, match=r"`margin` must be between 0 and 1"):
+        MapGeometry.from_scan(make_scan(), pixel_size=PIXEL_SIZE, margin=margin)
 
 
 def test_from_scan_unknown_frame_raises():

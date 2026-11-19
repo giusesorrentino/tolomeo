@@ -163,7 +163,7 @@ class MapGeometry(BaseModel):
         projection: Projection = "sin",
         frame: Frame = "radec",
         center: tuple[Radians, Radians] | None = None,
-        margin: int = 10,
+        margin: float = 0.1,
     ) -> MapGeometry:
         """
         Geometry that covers every detector of ``scan``, centred on ``center``.
@@ -175,8 +175,9 @@ class MapGeometry(BaseModel):
         along each axis is the largest distance of the boresight from the centre plus
         the largest offset of a detector from the boresight, so the whole array fits
         at every sample. The offsets rotate with the parallactic angle in ``"radec"``,
-        so their largest radius is used in both directions. ``margin`` pixels are then
-        added on each side.
+        so their largest radius is used in both directions. A fraction ``margin`` of
+        the half-size, rounded up to whole pixels, is then added on each side, so that
+        ``nx`` and ``ny`` grow by about ``100 * margin`` percent.
 
         Parameters
         ----------
@@ -193,8 +194,9 @@ class MapGeometry(BaseModel):
         center : tuple of float, optional
             Projection centre ``(ra, dec)``, in radians, for both frames. None means
             :attr:`~tolomeo.tod.Scan.center`.
-        margin : int
-            Pixels added on each side of the map. Default ``10``.
+        margin : float
+            Fraction of the half-size of the map added on each side, from 0 to 1.
+            Default ``0.1``: ``nx`` and ``ny`` about 10% larger.
 
         Returns
         -------
@@ -206,10 +208,14 @@ class MapGeometry(BaseModel):
         Raises
         ------
         ValueError
-            If ``frame`` is not ``"radec"`` or ``"azel"``.
+            If ``frame`` is not ``"radec"`` or ``"azel"``, or if ``margin`` is not
+            between 0 and 1.
         """
         if frame not in ("radec", "azel"):
             raise ValueError(f"Unknown frame: {frame!r}")
+
+        if not 0 <= margin <= 1:
+            raise ValueError(f"`margin` must be between 0 and 1, got {margin}.")
 
         pix = np.deg2rad(_to_unit(pixel_size, u.arcsec) / 3600)
         coords = scan.coordinates
@@ -232,8 +238,10 @@ class MapGeometry(BaseModel):
         half_x = np.abs(x).max() + r_array
         half_y = np.abs(y).max() + r_array
 
-        nx = 2 * (int(np.ceil(half_x / pix)) + margin)
-        ny = 2 * (int(np.ceil(half_y / pix)) + margin)
+        half_px_x = int(np.ceil(half_x / pix))
+        half_px_y = int(np.ceil(half_y / pix))
+        nx = 2 * (half_px_x + int(np.ceil(margin * half_px_x)))
+        ny = 2 * (half_px_y + int(np.ceil(margin * half_px_y)))
 
         return cls(
             nx=nx,
