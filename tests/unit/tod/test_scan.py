@@ -69,26 +69,42 @@ def test_scan_select_keeps_tod_and_pointing_together():
 
 
 # -----------------------------------------------------------------------------
-# Scan.center
+# Scan.source
 # -----------------------------------------------------------------------------
 
 
-def test_scan_center_is_the_field_centre():
-    ra, dec = make_scan().center
+def _with_source(scan, source_ra, source_dec):
+    """Copy of ``scan`` with another position of the source (None: unknown)."""
+    coords = scan.coordinates.model_copy(
+        update={"source_ra": source_ra, "source_dec": source_dec}
+    )
+    return scan.model_copy(update={"coordinates": coords})
 
-    assert np.isclose(ra, RA0)
-    assert np.isclose(dec, DEC0)
+
+def test_scan_source_is_the_position_of_the_source():
+    ra, dec = make_scan().source
+
+    assert ra == RA0
+    assert dec == DEC0
 
 
-def test_scan_center_uses_only_good_samples():
-    # Check that a flagged sample far away does not move the centre.
+def test_scan_source_of_a_moving_source_is_the_middle_sample():
+    # Check that for a planet, whose position changes along the scan, the position
+    # is the one of the sample in the middle.
     scan = make_scan()
-    scan.coordinates.ra[0] = RA0 + 1.0
-    scan.tod.flags[0] = False
+    n_samples = scan.coordinates.ra.size
+    track = RA0 + np.linspace(0.0, 1e-4, n_samples)
 
-    ra, _ = scan.center
+    ra, _ = _with_source(scan, track, scan.coordinates.source_dec).source
 
-    assert np.isclose(ra, RA0, atol=1e-9)
+    assert ra == track[n_samples // 2]
+
+
+def test_scan_source_unknown_raises():
+    scan = _with_source(make_scan(), None, None)
+
+    with pytest.raises(ValueError, match=r"no position of the source"):
+        _ = scan.source
 
 
 # -----------------------------------------------------------------------------

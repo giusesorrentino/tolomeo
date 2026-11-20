@@ -38,9 +38,9 @@ class RadiusMask(BaseModel):
         :class:`~astropy.units.Quantity` is converted to arcmin. It should contain the
         whole source plus a margin for the pointing error.
     center : "auto" or tuple of float
-        Center of the source: ``"auto"`` is the mean boresight position of the scan,
-        otherwise ``(ra, dec)``. Numbers are in degrees; ``"83.6 deg"`` or a
-        quantity is converted to degrees.
+        Center of the source: ``"auto"`` is the position written in the headers of
+        the FITS files (:attr:`~tolomeo.tod.Scan.source`), otherwise ``(ra, dec)``.
+        Numbers are in degrees; ``"83.6 deg"`` or a quantity is converted to degrees.
         Default ``"auto"``.
     """
 
@@ -78,7 +78,7 @@ class RadiusMask(BaseModel):
                 "measured on the plane of the projection of the map."
             )
         if self.center == "auto":
-            ra0, dec0 = scan.center
+            ra0, dec0 = scan.source
         else:
             ra0, dec0 = np.deg2rad(self.center)
 

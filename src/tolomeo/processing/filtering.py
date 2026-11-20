@@ -363,7 +363,7 @@ def process_tod(
         with a :class:`~tolomeo.processing.RadiusMask`: the distance from the source
         is measured on the plane of the projection of the map, so that the mask is
         where the source is in the map. Build it before cleaning; it only needs
-        ``scan.center``. The other masks do not use it.
+        ``scan.source``. The other masks do not use it.
 
     Returns
     -------

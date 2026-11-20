@@ -1,4 +1,5 @@
 import os
+import re
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -18,12 +19,17 @@ __all__ = ["read_scan"]
 _RADIAN_UNITS = {"rad", "radian", "radians"}
 _ARCSEC_TO_RAD = np.pi / (180 * 3600)
 
+# name of a detector column of the PH TABLE: chp_ and the id of the detector
+_CHANNEL_COLUMN = re.compile(r"chp_\d+")
+
 
 class SubScan(NamedTuple):
     """
     Arrays of one FITS subscan, as :func:`_read_subscan` returns them.
 
     All the arrays have ``n_samples`` rows; the angles are in radians.
+    ``source_ra`` and ``source_dec`` are the position of the source written in the
+    primary header of the subscan.
     """
 
     n_samples: int
@@ -35,11 +41,13 @@ class SubScan(NamedTuple):
     par_angle: NDArray[np.float64]
     az: NDArray[np.float64]
     el: NDArray[np.float64]
+    source_ra: float  # radians, J2000
+    source_dec: float
 
 
 def read_scan(
     tod_dirs: str | Path | ScanSpec | Sequence[str | Path | ScanSpec],
-    beammap_path: str | Path,
+    beammap_path: str | Path | None = None,
     channels: int | Sequence[int] | None = None,
 ) -> Scan:
     """
@@ -49,19 +57,22 @@ def read_scan(
     ----------
     tod_dirs : str, :class:`~pathlib.Path`, :class:`~tolomeo.tod.ScanSpec` or a sequence of them
         Directory or list of directories with the FITS subscans of each scan.
-    beammap_path : str or :class:`~pathlib.Path`
+    beammap_path : str, :class:`~pathlib.Path` or None, optional
         Beammap text file, with columns id, lon and lat offsets (deg), two
-        columns not used here and a flag (0 = good detector).
+        columns not used here and a flag (0 = good detector). None (default)
+        reads every ``chp_XXX`` column of the FITS files, with zero offsets: for
+        a scan made to measure the beammap.
     channels : int, sequence of int or None, optional
-        Good detectors of the beammap to read: None (default) reads all of
-        them, an int ``n`` the first ``n`` by id, a sequence the detectors with
-        those ids (the ``XXX`` of the ``chp_XXX`` columns).
+        Detectors to read, among the good ones of the beammap (all the columns of
+        the FITS files without a beammap): None (default) reads all of them, an
+        int ``n`` the first ``n`` by id, a sequence the detectors with those ids
+        (the ``XXX`` of the ``chp_XXX`` columns).
 
     Returns
     -------
     :class:`~tolomeo.tod.Scan`
-        TOD of the good detectors, boresight coordinates and detector offsets
-        (all angles in radians).
+        TOD of the detectors, boresight coordinates, position of the source from
+        the headers of the subscans and detector offsets (all angles in radians).
 
     Raises
     ------
@@ -70,8 +81,8 @@ def read_scan(
     FileNotFoundError
         If no FITS file is found.
     ValueError
-        If the beammap has no good detector, `channels` is not valid or a
-        subscan is inconsistent.
+        If the beammap has no good detector, `channels` is not valid, or a
+        subscan is inconsistent or has no position of the source in its header.
     """
     dirs = [tod_dirs] if isinstance(tod_dirs, (str, Path, ScanSpec)) else tod_dirs
     dirs = [ScanSpec(path=d) if not isinstance(d, ScanSpec) else d for d in dirs]
@@ -91,7 +102,13 @@ def read_scan(
     if not fits_files:
         raise FileNotFoundError("No FITS subscans found in the given directories.")
 
-    channel_ids, lon_offset, lat_offset = _read_beammap(beammap_path)
+    if beammap_path is None:
+        # a scan made to measure the beammap: every detector, at the boresight
+        channel_ids = _read_channel_ids(fits_files[0][0])
+        lon_offset = np.zeros(channel_ids.size)
+        lat_offset = np.zeros(channel_ids.size)
+    else:
+        channel_ids, lon_offset, lat_offset = _read_beammap(beammap_path)
     keep = _select_detectors(channel_ids, channels)
 
     channel_ids = channel_ids[keep]
@@ -120,6 +137,11 @@ def read_scan(
         par_angle=np.concatenate([s.par_angle for s in subscans]),
         az=np.concatenate([s.az for s in subscans]),
         el=np.concatenate([s.el for s in subscans]),
+        # one position per subscan, from its header, repeated over its samples
+        source_ra=np.concatenate([np.full(s.n_samples, s.source_ra) for s in subscans]),
+        source_dec=np.concatenate(
+            [np.full(s.n_samples, s.source_dec) for s in subscans]
+        ),
     )
     tod = TimeOrderedData(
         signal=np.concatenate([s.signal for s in subscans], axis=0),
@@ -190,6 +212,38 @@ def _read_beammap(
     )
 
 
+def _read_channel_ids(file: Path) -> NDArray[np.int64]:
+    """
+    Ids of all the detectors of a FITS subscan, sorted.
+
+    Parameters
+    ----------
+    file : :class:`~pathlib.Path`
+        A FITS subscan, whose ``"PH TABLE"`` has one ``chp_XXX`` column per
+        detector.
+
+    Returns
+    -------
+    :class:`~numpy.ndarray` of int64
+        The ``XXX`` of the ``chp_XXX`` columns, sorted.
+        Shape ``(n_det,)``.
+
+    Raises
+    ------
+    ValueError
+        If the table has no ``chp_XXX`` column.
+    """
+    with fits.open(file, memmap=False) as hdul:
+        names = hdul["PH TABLE"].columns.names
+
+    # chp_ has four characters: the rest of the name is the id
+    ids = [int(name[4:]) for name in names if _CHANNEL_COLUMN.fullmatch(name)]
+    if not ids:
+        raise ValueError(f"No chp_XXX column in the PH TABLE of {file.name}.")
+
+    return np.sort(np.array(ids, dtype=np.int64))
+
+
 def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
     """
     Read one FITS subscan: the detector columns and the boresight pointing.
@@ -212,8 +266,9 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
     -------
     :class:`~tolomeo.io.scan.SubScan`
         ``signal`` of shape ``(n_samples, n_det)`` and the other arrays of shape
-        ``(n_samples,)``. ``ValueError`` if the two tables have different lengths or
-        a detector column is missing.
+        ``(n_samples,)``; ``source_ra`` and ``source_dec`` from the primary header.
+        ``ValueError`` if the two tables have different lengths, a detector column
+        is missing or the header has no position of the source.
     """
     with fits.open(file, memmap=False) as hdul:
         data_hdu = hdul["DATA TABLE"]
@@ -226,6 +281,17 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
         missing = [c for c in columns if c not in pt.names]
         if missing:
             raise ValueError(f"Detector column {missing[0]!r} missing in {file.name}.")
+
+        # position of the source: radians and J2000, as the comments of the two
+        # keywords say (a header has no unit to check, unlike the columns)
+        header = hdul[0].header
+        if "RightAscension" not in header or "Declination" not in header:
+            raise ValueError(
+                "No position of the source (RightAscension, Declination) in the "
+                f"header of {file.name}."
+            )
+        source_ra = float(header["RightAscension"])
+        source_dec = float(header["Declination"])
 
         r = _read_angle(data_hdu, "raj2000")
         d = _read_angle(data_hdu, "decj2000")
@@ -254,6 +320,8 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
             par_angle=par_angle,
             az=az,
             el=el,
+            source_ra=source_ra,
+            source_dec=source_dec,
         )
 
 
@@ -262,12 +330,13 @@ def _select_detectors(
     channels: int | Sequence[int] | None,
 ) -> NDArray[np.bool_]:
     """
-    Which of the good detectors of the beammap to read.
+    Which detectors to read, among those that can be read.
 
     Parameters
     ----------
     channel_ids : :class:`~numpy.ndarray` of int
-        Ids of the good detectors, sorted (as returned by :func:`_read_beammap`).
+        Ids of the detectors that can be read, sorted: the good ones of the beammap
+        (:func:`_read_beammap`) or all the columns (:func:`_read_channel_ids`).
         Shape ``(n_det,)``.
     channels : int, sequence of int or None
         None keeps all of them; an int ``n`` keeps the first ``n`` by id; a
@@ -281,7 +350,7 @@ def _select_detectors(
     Raises
     ------
     ValueError
-        If ``n`` is smaller than 1, or an id is not a good detector of the beammap.
+        If ``n`` is smaller than 1, or an id is not in ``channel_ids``.
     """
     if channels is None:
         return np.ones(channel_ids.size, dtype=bool)
@@ -292,5 +361,5 @@ def _select_detectors(
     wanted = np.asarray(channels, dtype=int)
     missing = np.setdiff1d(wanted, channel_ids)
     if missing.size:  # a typo must not silently drop a detector
-        raise ValueError(f"not good detectors of the beammap: {missing.tolist()}")
+        raise ValueError(f"not detectors that can be read: {missing.tolist()}")
     return np.isin(channel_ids, wanted)

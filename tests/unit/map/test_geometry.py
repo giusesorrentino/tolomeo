@@ -135,12 +135,12 @@ def test_from_scan_covers_every_detector(frame, par_angle):
     assert border_y <= iy.min() and iy.max() <= geometry.ny - border_y - 1
 
 
-def test_from_scan_default_center_is_the_scan_center():
+def test_from_scan_default_center_is_the_source():
     scan = make_scan()
 
     geometry = MapGeometry.from_scan(scan, pixel_size=PIXEL_SIZE)
 
-    np.testing.assert_allclose(geometry.center, scan.center)
+    np.testing.assert_array_equal(geometry.center, scan.source)
 
 
 @pytest.mark.parametrize("margin", [0.05, 0.1, 0.5, 1.0])

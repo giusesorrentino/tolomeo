@@ -101,15 +101,29 @@ class Scan(BaseModel):
         )
 
     @property
-    def center(self) -> tuple[float, float]:
+    def source(self) -> tuple[float, float]:
         """
-        Mean boresight position ``(ra, dec)`` in radians, over the good samples.
+        Position ``(ra, dec)`` of the source, in radians, from the FITS headers.
 
-        Only the samples with ``tod.flags`` True are used (see
-        :attr:`~tolomeo.coords.Coordinates.center`).
+        :func:`~tolomeo.io.read_scan` reads it from the header of every subscan
+        (:attr:`~tolomeo.coords.Coordinates.source_ra` and ``source_dec``). It is
+        the same at every sample for a fixed source; a planet moves, and the
+        position is the one of the sample in the middle of the scan.
+
+        Raises
+        ------
+        ValueError
+            If the coordinates have no position of the source (a scan built by
+            hand): then give the center explicitly.
         """
-        coord = self.coordinates.select(self.tod.flags)
-        return coord.center
+        ra, dec = self.coordinates.source_ra, self.coordinates.source_dec
+        if ra is None or dec is None or ra.size == 0:
+            raise ValueError(
+                "The scan has no position of the source: give the center explicitly."
+            )
+
+        mid = ra.size // 2
+        return float(ra[mid]), float(dec[mid])
 
     @property
     def scan_speed(self) -> float:

@@ -128,6 +128,8 @@ def make_scan(
         par_angle=np.full(n_samples, par_angle),
         az=np.linspace(1.0, 1.1, n_samples),
         el=np.full(n_samples, 0.8),
+        source_ra=np.full(n_samples, RA0),
+        source_dec=np.full(n_samples, DEC0),
     )
     tod = TimeOrderedData(
         signal=noise_rms * rng.standard_normal((n_samples, n_det)),
@@ -189,7 +191,12 @@ def write_subscan(path, scan, start, stop, angle_unit="rad"):
         ],
         name="PH TABLE",
     )
-    fits.HDUList([fits.PrimaryHDU(), data_table, ph_table]).writeto(path)
+    # the position of the source goes in the primary header, as MISTRAL writes it
+    primary = fits.PrimaryHDU()
+    if coords.source_ra is not None:
+        primary.header["HIERARCH RightAscension"] = float(coords.source_ra[start])
+        primary.header["HIERARCH Declination"] = float(coords.source_dec[start])
+    fits.HDUList([primary, data_table, ph_table]).writeto(path)
 
 
 def write_beammap(path, ids, lon, lat, flags=None):

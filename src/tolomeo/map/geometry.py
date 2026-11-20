@@ -193,7 +193,7 @@ class MapGeometry(BaseModel):
             Orientation of the map, see :class:`MapGeometry`. Default ``"radec"``.
         center : tuple of float, optional
             Projection centre ``(ra, dec)``, in radians, for both frames. None means
-            :attr:`~tolomeo.tod.Scan.center`.
+            the source in the FITS headers, :attr:`~tolomeo.tod.Scan.source`.
         margin : float
             Fraction of the half-size of the map added on each side, from 0 to 1.
             Default ``0.1``: ``nx`` and ``ny`` about 10% larger.
@@ -208,8 +208,9 @@ class MapGeometry(BaseModel):
         Raises
         ------
         ValueError
-            If ``frame`` is not ``"radec"`` or ``"azel"``, or if ``margin`` is not
-            between 0 and 1.
+            If ``frame`` is not ``"radec"`` or ``"azel"``, if ``margin`` is not
+            between 0 and 1, or if ``center`` is None and ``scan`` has no position
+            of the source.
         """
         if frame not in ("radec", "azel"):
             raise ValueError(f"Unknown frame: {frame!r}")
@@ -226,7 +227,7 @@ class MapGeometry(BaseModel):
         ok = scan.tod.flags & np.isfinite(ra) & np.isfinite(dec) & np.isfinite(par)
 
         if center is None:
-            center = scan.center
+            center = scan.source
 
         ra0, dec0 = center
         x, y = radec2xy(ra[ok], dec[ok], ra0, dec0, projection=projection)

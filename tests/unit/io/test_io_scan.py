@@ -24,6 +24,14 @@ def _scan(seed=0):
     return make_scan(n_subscans=N_SUBSCANS, subscan_len=SUBSCAN_LEN, seed=seed)
 
 
+def _with_source(scan, source_ra, source_dec):
+    """Copy of ``scan`` with another position of the source (None: unknown)."""
+    coords = scan.coordinates.model_copy(
+        update={"source_ra": source_ra, "source_dec": source_dec}
+    )
+    return scan.model_copy(update={"coordinates": coords})
+
+
 # -----------------------------------------------------------------------------
 # read_scan
 # -----------------------------------------------------------------------------
@@ -140,6 +148,56 @@ def test_read_scan_beammap_with_one_detector(tmp_path):
 
     assert read.channel_ids == [7]
     np.testing.assert_array_equal(read.tod.signal, scan.tod.signal[:, 1:2])
+
+
+def test_read_scan_without_beammap_reads_every_column(tmp_path):
+    # Check that without a beammap every chp_XXX column is read, sorted by id, with
+    # zero offsets.
+    scan = _scan()
+    tod_dir, _ = write_scan_dir(tmp_path, scan)
+
+    read = read_scan(tod_dir)
+
+    assert read.channel_ids == sorted(DETECTOR_IDS)
+    np.testing.assert_array_equal(read.offsets["lon"], 0.0)
+    np.testing.assert_array_equal(read.offsets["lat"], 0.0)
+    np.testing.assert_array_equal(read.tod.signal, scan.tod.signal)
+
+
+def test_read_scan_without_beammap_with_channels(tmp_path):
+    scan = _scan()
+    tod_dir, _ = write_scan_dir(tmp_path, scan)
+
+    read = read_scan(tod_dir, channels=[7, 20])
+
+    assert read.channel_ids == [7, 20]
+    np.testing.assert_array_equal(read.tod.signal, scan.tod.signal[:, [1, 3]])
+
+
+def test_read_scan_source_from_the_header_of_every_subscan(tmp_path):
+    # Check that every sample gets the position of the source written in the header
+    # of its subscan: for a planet it changes from one subscan to the next.
+    scan = _scan()
+    shift = np.repeat(np.arange(N_SUBSCANS), SUBSCAN_LEN) * 10 * ARCSEC
+    coords = scan.coordinates
+    scan = _with_source(scan, coords.source_ra + shift, coords.source_dec - shift)
+    tod_dir, beammap = write_scan_dir(tmp_path, scan)
+
+    read = read_scan(tod_dir, beammap)
+
+    np.testing.assert_allclose(
+        read.coordinates.source_ra, scan.coordinates.source_ra, rtol=1e-15
+    )
+    np.testing.assert_allclose(
+        read.coordinates.source_dec, scan.coordinates.source_dec, rtol=1e-15
+    )
+
+
+def test_read_scan_header_without_source_raises(tmp_path):
+    tod_dir, beammap = write_scan_dir(tmp_path, _with_source(_scan(), None, None))
+
+    with pytest.raises(ValueError, match=r"No position of the source"):
+        read_scan(tod_dir, beammap)
 
 
 def test_read_scan_not_a_directory_raises(tmp_path):

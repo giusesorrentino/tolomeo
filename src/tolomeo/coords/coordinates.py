@@ -7,10 +7,10 @@ from pydantic import BaseModel, ConfigDict
 
 class Coordinates(BaseModel):
     """
-    Boresight coordinates of a scan.
+    Boresight coordinates of a scan, and the position of its source.
 
     The class stores the celestial pointing of the telescope boresight
-    as a function of time.
+    as a function of time, and where the source of the scan is.
 
     Attributes
     ----------
@@ -35,6 +35,13 @@ class Coordinates(BaseModel):
         Elevation of the boresight at each time sample, in radians.
         Shape: ``(n_samples,)``.
 
+    source_ra, source_dec : :class:`~numpy.ndarray` of float64 or None
+        Position of the source (the target of the scan) at each time sample, in
+        radians, J2000, as written in the header of every FITS subscan: the same
+        at every sample for a fixed source, different from one subscan to the
+        next for a planet. None if it is not known (a scan built by hand).
+        Shape: ``(n_samples,)``.
+
     Notes
     -----
     The boresight arrays ``ra``, ``dec`` and ``par_angle`` must contain
@@ -49,6 +56,8 @@ class Coordinates(BaseModel):
     par_angle: NDArray[np.float64]
     az: NDArray[np.float64]
     el: NDArray[np.float64]
+    source_ra: NDArray[np.float64] | None = None
+    source_dec: NDArray[np.float64] | None = None
 
     def select(self, mask: NDArray[np.bool_]) -> Coordinates:
         """
@@ -63,40 +72,26 @@ class Coordinates(BaseModel):
         Returns
         -------
         :class:`~tolomeo.coords.Coordinates`
-            New object whose five arrays have shape ``(mask.sum(),)`` (copies).
+            New object whose arrays have shape ``(mask.sum(),)`` (copies).
         """
         if mask.dtype != bool:
             raise TypeError("")
         if mask.shape != (self.ra.shape[0],):
             raise ValueError("")
 
-        return self.model_copy(
-            update={
-                "ra": self.ra[mask],
-                "dec": self.dec[mask],
-                "par_angle": self.par_angle[mask],
-                "az": self.az[mask],
-                "el": self.el[mask],
-            }
-        )
+        update = {
+            "ra": self.ra[mask],
+            "dec": self.dec[mask],
+            "par_angle": self.par_angle[mask],
+            "az": self.az[mask],
+            "el": self.el[mask],
+        }
 
-    @property
-    def center(self) -> tuple[float, float]:
-        """
-        Mean boresight position (ra, dec) in radians.
+        # the position of the source is optional: a scan built by hand may not
+        # have it
+        for name in ("source_ra", "source_dec"):
+            values = getattr(self, name)
+            if values is not None:
+                update[name] = values[mask]
 
-        The samples with a NaN or inf pointing are ignored: the raw scans have some, and
-        a single NaN would make the whole center NaN. The mean of the RA is a circular
-        mean (mean of sin and cos), so it is right also across RA = 0.
-        """
-        good = np.isfinite(self.ra) & np.isfinite(self.dec)
-        if not good.any():
-            raise ValueError(
-                "No finite boresight coordinates: cannot compute the center."
-            )
-
-        ra0 = np.arctan2(
-            np.mean(np.sin(self.ra[good])), np.mean(np.cos(self.ra[good]))
-        ) % (2 * np.pi)
-        dec0 = np.mean(self.dec[good])
-        return float(ra0), float(dec0)
+        return self.model_copy(update=update)

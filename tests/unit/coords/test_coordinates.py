@@ -13,47 +13,6 @@ def _coordinates(ra_deg, dec_deg):
 
 
 # -----------------------------------------------------------------------------
-# center
-# -----------------------------------------------------------------------------
-
-
-def test_center_is_the_mean():
-    ra, dec = _coordinates([10.0, 20.0, 30.0], [-1.0, 0.0, 4.0]).center
-
-    assert np.isclose(np.rad2deg(ra), 20.0)
-    assert np.isclose(np.rad2deg(dec), 1.0)
-
-
-def test_center_ra_is_a_circular_mean_across_zero():
-    # Check that the mean of 359 deg and 3 deg is 1 deg, not 181 deg.
-    ra, _ = _coordinates([359.0, 3.0], [0.0, 0.0]).center
-
-    assert np.isclose(np.rad2deg(ra), 1.0)
-
-
-@pytest.mark.parametrize("ra_deg", [5.0, 179.0, 181.0, 275.0, 359.0])
-def test_center_ra_is_in_zero_two_pi(ra_deg):
-    # Check that the RA of the centre is always in [0, 2 pi), also above 180 deg.
-    ra, _ = _coordinates([ra_deg - 0.5, ra_deg + 0.5], [0.0, 0.0]).center
-
-    assert 0.0 <= ra < 2 * np.pi
-    assert np.isclose(np.rad2deg(ra), ra_deg)
-
-
-def test_center_ignores_nan():
-    ra, dec = _coordinates([10.0, np.nan, 30.0], [0.0, 5.0, np.nan]).center
-
-    # only the first sample has both coordinates finite
-    assert np.isclose(np.rad2deg(ra), 10.0)
-    assert np.isclose(np.rad2deg(dec), 0.0)
-
-
-def test_center_all_nan_raises():
-    with pytest.raises(ValueError, match=r"No finite boresight"):
-        _ = _coordinates([np.nan, np.nan], [0.0, 0.0]).center
-
-
-# -----------------------------------------------------------------------------
 # select
 # -----------------------------------------------------------------------------
 
@@ -68,6 +27,24 @@ def test_select_keeps_the_masked_samples():
     np.testing.assert_allclose(np.rad2deg(selected.dec), [5.0, 7.0])
     for name in ("par_angle", "az", "el"):
         assert getattr(selected, name).shape == (2,)
+
+
+def test_select_keeps_the_position_of_the_source():
+    coords = _coordinates([1.0, 2.0, 3.0], [5.0, 6.0, 7.0]).model_copy(
+        update={"source_ra": np.array([0.1, 0.2, 0.3]), "source_dec": np.ones(3)}
+    )
+
+    selected = coords.select(np.array([True, False, True]))
+
+    np.testing.assert_array_equal(selected.source_ra, [0.1, 0.3])
+    np.testing.assert_array_equal(selected.source_dec, [1.0, 1.0])
+
+
+def test_select_without_the_position_of_the_source():
+    selected = _coordinates([1.0, 2.0], [5.0, 6.0]).select(np.array([True, False]))
+
+    assert selected.source_ra is None
+    assert selected.source_dec is None
 
 
 def test_select_does_not_modify_the_original():

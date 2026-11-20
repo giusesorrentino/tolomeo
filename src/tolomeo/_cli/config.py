@@ -22,7 +22,7 @@ Example::
       ny: 384
       pixel_size: 4.0                # arcsec
       projection: sin                # sin | tan | zea
-      center: auto                   # auto = scan.center, or [ra, dec] in degrees
+      center: auto                   # auto = the FITS headers, or [ra, dec] in degrees
 
     calibration:                     # optional, applied before `filtering`
       skydip_dir: ~/Developer/ROMA_DATA/JUPITER/CAL   # the GAIN_CAL FITS files, or a single FITS file
@@ -346,7 +346,7 @@ class RunConfig(BaseModel):
 
             center = raw_geometry.get("center") or "auto"
             if isinstance(center, str) and center.lower() == "auto":
-                center = scan.center
+                center = scan.source
             else:
                 if not isinstance(center, (list, tuple)) or len(center) != 2:
                     raise ValueError(
