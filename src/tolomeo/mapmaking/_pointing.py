@@ -1,5 +1,3 @@
-"""Pointing matrix: the map pixel seen by every detector at every time sample."""
-
 from concurrent.futures import ThreadPoolExecutor
 from itertools import pairwise
 from math import ceil
@@ -124,34 +122,5 @@ def _pointing_matrix(
 
     for future in futures:
         future.result()
-
-    # # 2. one detector at a time: its position is the boresight plus its offset
-    # for j in range(n_det):
-    #     # offset of detector j from the boresight (radians)
-    #     x_off, y_off = offsets["lon"][j], offsets["lat"][j]
-    #     par_angle = coords.par_angle
-
-    #     # the offset rotates with the parallactic angle, so it changes along the scan
-    #     x_rot, y_rot = rot(x_off, y_off, par_angle)
-
-    #     # position of the detector on the tangent plane. x_det grows toward the west,
-    #     # so that the east is on the left of the image, as in the standard orientation
-    #     x_det = -x + x_rot
-    #     y_det = y + y_rot
-
-    #     # pixel indices: distance from the lower-left corner in pixel units, rounded down
-    #     # (still floats here, and NaN where the coordinates are NaN)
-    #     ix = np.floor((x_det - xmin) / pixel_size)
-    #     iy = np.floor((y_det - ymin) / pixel_size)
-
-    #     # inside the map if both indices are in range. Comparing a NaN would warn: it
-    #     # is silenced, and the comparison is simply False
-    #     with np.errstate(invalid="ignore"):
-    #         inside = (ix >= 0) & (ix < nx) & (iy >= 0) & (iy < ny)
-
-    #     # flat row-major index, as in an image of shape (ny, nx); the samples outside get
-    #     # pixel 0 so that the index is always valid
-    #     pixels[:, j] = np.where(inside, iy * nx + ix, 0).astype(np.uintp)
-    #     valid[:, j] = inside
 
     return pixels, valid
