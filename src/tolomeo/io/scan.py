@@ -9,9 +9,11 @@ import numpy as np
 from astropy.io import fits
 from numpy.typing import NDArray
 
+from ..beammap._beammap import BeamMap
 from ..coords import Coordinates
 from ..coords.transforms import shift_boresight
 from ..tod import Scan, ScanSpec, TimeOrderedData
+from .beammap import read_beammap
 
 __all__ = ["read_scan"]
 
@@ -47,7 +49,7 @@ class SubScan(NamedTuple):
 
 def read_scan(
     tod_dirs: str | Path | ScanSpec | Sequence[str | Path | ScanSpec],
-    beammap_path: str | Path | None = None,
+    beammap_path: str | Path | BeamMap | None = None,
     channels: int | Sequence[int] | None = None,
 ) -> Scan:
     """
@@ -57,11 +59,11 @@ def read_scan(
     ----------
     tod_dirs : str, :class:`~pathlib.Path`, :class:`~tolomeo.tod.ScanSpec` or a sequence of them
         Directory or list of directories with the FITS subscans of each scan.
-    beammap_path : str, :class:`~pathlib.Path` or None, optional
-        Beammap text file, with columns id, lon and lat offsets (deg), two
-        columns not used here and a flag (0 = good detector). None (default)
-        reads every ``chp_XXX`` column of the FITS files, with zero offsets: for
-        a scan made to measure the beammap.
+    beammap_path : str, :class:`~pathlib.Path`, :class:`~tolomeo.beammap.BeamMap` or None, optional
+        Beammap: a text file (see :func:`~tolomeo.io.read_beammap`) or a
+        :class:`~tolomeo.beammap.BeamMap`. Only its good channels (flag 0) are
+        read. None (default) reads every ``chp_XXX`` column of the FITS files,
+        with zero offsets: for a scan made to measure the beammap.
     channels : int, sequence of int or None, optional
         Detectors to read, among the good ones of the beammap (all the columns of
         the FITS files without a beammap): None (default) reads all of them, an
@@ -108,7 +110,12 @@ def read_scan(
         lon_offset = np.zeros(channel_ids.size)
         lat_offset = np.zeros(channel_ids.size)
     else:
-        channel_ids, lon_offset, lat_offset = _read_beammap(beammap_path)
+        beammap = (
+            beammap_path
+            if isinstance(beammap_path, BeamMap)
+            else read_beammap(beammap_path)
+        )
+        channel_ids, lon_offset, lat_offset = _good_channels(beammap)
     keep = _select_detectors(channel_ids, channels)
 
     channel_ids = channel_ids[keep]
@@ -184,31 +191,28 @@ def _read_angle(hdu: fits.BinTableHDU, name: str) -> NDArray[np.float64]:
     return np.array(hdu.data[name], dtype=np.float64)
 
 
-def _read_beammap(
-    beammap_path: str | Path,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Read ids and offsets (radians) of the good detectors, sorted by id."""
-    beammap = np.atleast_2d(np.loadtxt(beammap_path, comments="#"))
+def _good_channels(
+    beammap: BeamMap,
+) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Ids and offsets (radians) of the good channels of a beammap, sorted by id.
 
-    if beammap.shape[1] < 6:
-        raise ValueError("the beammap must have at least six columns")
-
-    # columns: id, lon (deg), lat (deg), two unused ones, flag (0 = good)
-    ids, lon_offset, lat_offset, kid_flag = beammap[:, [0, 1, 2, 5]].T
-    good = kid_flag == 0
-
-    channel_ids = ids[good].astype(int)
-    if channel_ids.size == 0:
+    Raises
+    ------
+    ValueError
+        If the beammap has no good channel.
+    """
+    good = beammap.flags == 0
+    if not good.any():
         raise ValueError("the beammap contains no good detectors.")
-    if np.unique(channel_ids).size != channel_ids.size:
-        raise ValueError("duplicate detector ids in the beammap.")
 
+    channel_ids = np.asarray(beammap.channel_ids[good], dtype=np.int64)
     order = np.argsort(channel_ids)  # same ordering as mistral2roma
 
     return (
         channel_ids[order],
-        np.deg2rad(lon_offset[good][order]),
-        np.deg2rad(lat_offset[good][order]),
+        np.asarray(beammap.lon[good][order], dtype=np.float64),
+        np.asarray(beammap.lat[good][order], dtype=np.float64),
     )
 
 
@@ -336,7 +340,7 @@ def _select_detectors(
     ----------
     channel_ids : :class:`~numpy.ndarray` of int
         Ids of the detectors that can be read, sorted: the good ones of the beammap
-        (:func:`_read_beammap`) or all the columns (:func:`_read_channel_ids`).
+        (:func:`_good_channels`) or all the columns (:func:`_read_channel_ids`).
         Shape ``(n_det,)``.
     channels : int, sequence of int or None
         None keeps all of them; an int ``n`` keeps the first ``n`` by id; a

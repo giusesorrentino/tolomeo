@@ -12,7 +12,8 @@ from tests.common import (
     write_scan_dir,
     write_subscan,
 )
-from tolomeo.io import read_scan
+from tolomeo.beammap import ChannelFlag
+from tolomeo.io import read_beammap, read_scan
 from tolomeo.tod import ScanSpec
 
 # small scans: every call of read_scan starts a pool of processes
@@ -264,3 +265,18 @@ def test_read_scan_tables_of_different_length_raise(tmp_path):
 
     with pytest.raises(ValueError, match=r"length mismatch in subscan_001.fits"):
         read_scan(tod_dir, beammap)
+
+
+def test_read_scan_with_a_beammap_object(tmp_path):
+    # Check that a BeamMap gives the same scan as its file, without the flagged
+    # channels.
+    scan = _scan()
+    tod_dir, beammap_file = write_scan_dir(tmp_path, scan)
+    beammap = read_beammap(beammap_file)
+    flags = np.array([0, 0, ChannelFlag.LOW_SNR, 0])
+
+    read = read_scan(tod_dir, beammap.model_copy(update={"flags": flags}))
+
+    assert read.channel_ids == [3, 7, 20]
+    np.testing.assert_allclose(read.offsets["lon"], OFFSETS_LON[[0, 1, 3]], rtol=1e-6)
+    np.testing.assert_array_equal(read.tod.signal, scan.tod.signal[:, [0, 1, 3]])

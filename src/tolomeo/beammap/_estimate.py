@@ -1,7 +1,5 @@
 import logging
 import warnings
-from datetime import datetime
-from enum import IntFlag
 from pathlib import Path
 
 import astropy.units as u
@@ -13,8 +11,9 @@ from scipy.spatial.distance import pdist, squareform
 
 from .._lib.units import _to_unit
 from ..coords.transforms import radec2xy, rot
+from ..io.beammap import write_beammap
 from ..tod import Scan
-from ._beammap import BeamMap
+from ._beammap import BeamMap, ChannelFlag
 
 __all__ = ["reconstruct_focal_plane"]
 
@@ -23,40 +22,6 @@ logger = logging.getLogger(__name__)
 # one radian in arcsec, and the sigma of a Gaussian in units of its FWHM
 _RAD2ARCSEC = 180 / np.pi * 3600
 _FWHM2SIGMA = 1 / np.sqrt(8 * np.log(2))
-
-# columns of a beammap file: id, lon, lat, their sigmas, flag, as in the MISTRAL ones
-_BEAMMAP_FMT = ["%2d", "%12.6f", "%12.6f", "%12.3e", "%12.3e", "%2d"]
-
-
-class ChannelFlag(IntFlag):
-    """
-    Reasons why a channel of a beammap is flagged.
-
-    The flag of a channel is the sum of its reasons, so that one number holds all
-    of them: 0 for a good channel, 10 for ``LOW_SNR | AT_EDGE``. Whether a channel
-    has a given reason is tested with ``flags & reason``, nonzero if it has it
-    (for example ``flags & ChannelFlag.LOW_SNR``); iterating over the class gives
-    the reasons one by one.
-
-    Attributes
-    ----------
-    FIT_FAILED : int
-        1: the Gaussian fit did not converge, or its covariance could not be
-        estimated. The channel has no position.
-    LOW_SNR : int
-        2: the fitted amplitude over its error is below ``min_snr``.
-    DUPLICATE : int
-        4: another channel is less than 1 arcsec away, usually because the same
-        tone is written in two channels (identical data).
-    AT_EDGE : int
-        8: the centre of the fit is closer than ``fit_radius`` to the edge of the
-        maps, where its cutout is cut.
-    """
-
-    FIT_FAILED = 1
-    LOW_SNR = 2
-    DUPLICATE = 4
-    AT_EDGE = 8
 
 
 def _gaussian_2d(
@@ -111,21 +76,23 @@ def reconstruct_focal_plane(
         smoothed map. A number is in arcsec. Two or three FWHM. Defaults to 30.
     fwhm : float or str, optional
         Expected FWHM of the beam, for the smoothing and the starting point of the
-        fit. A number is in arcsec. Defaults to 13.
+        fit. A number is in arcsec. Defaults to 12.
     min_snr : float, optional
         A detector whose fitted amplitude has a lower signal-to-noise ratio is
         flagged. Defaults to 10.
     output : str, :class:`~pathlib.Path` or None, optional
         Beammap text file to write, in the format of the MISTRAL ones (see
-        :func:`_write_beammap`). Defaults to ``None``: nothing is written.
+        :func:`~tolomeo.io.write_beammap`). Defaults to ``None``: nothing is
+        written.
 
     Returns
     -------
     BeamMap
-        For every channel of ``scan``: ``channel_ids``; ``lon`` and ``lat``, the
-        offsets in radians relative to ``ref_channel``; ``flags``, 0 for a good
-        channel, otherwise the sum of its :class:`ChannelFlag`, as in the column 6
-        of the file.
+        For every channel of ``scan``: ``lon`` and ``lat``, the offsets in radians
+        relative to ``ref_channel``, and their errors from the fit; ``flags``, 0
+        for a good channel, otherwise the sum of its
+        :class:`~tolomeo.beammap.ChannelFlag`. Also ``ref_channel`` with its
+        offsets from the boresight, and ``min_snr`` as ``snr_threshold``.
 
     Raises
     ------
@@ -278,106 +245,19 @@ def reconstruct_focal_plane(
     duplicate = squareform(pair_distances * _RAD2ARCSEC < 1).any(axis=0)
     reasons[duplicate] |= ChannelFlag.DUPLICATE
 
+    beammap = BeamMap(
+        channel_ids=np.array(scan.channel_ids),
+        flags=reasons,
+        lat=lat,
+        lon=lon,
+        lat_error=np.deg2rad(y0_err / 3600),
+        lon_error=np.deg2rad(x0_err / 3600),
+        ref_channel=ref_channel,
+        ref_lat=float(ref_lat),
+        ref_lon=float(ref_lon),
+        snr_threshold=min_snr,
+    )
     if output is not None:
-        _write_beammap(
-            output,
-            channel_ids=np.array(scan.channel_ids),
-            lon=np.rad2deg(lon),
-            lat=np.rad2deg(lat),
-            lon_sigma=x0_err / 3600,
-            lat_sigma=y0_err / 3600,
-            reasons=reasons,
-            min_snr=min_snr,
-            ref_channel=ref_channel,
-            ref_lon=np.rad2deg(ref_lon),
-            ref_lat=np.rad2deg(ref_lat),
-        )
+        write_beammap(beammap, output)
 
-    return BeamMap(
-        channel_ids=np.array(scan.channel_ids), flags=reasons, lat=lat, lon=lon
-    )
-
-
-def _write_beammap(
-    path: str | Path,
-    *,
-    channel_ids: NDArray[np.integer],
-    lon: NDArray[np.float64],
-    lat: NDArray[np.float64],
-    lon_sigma: NDArray[np.float64],
-    lat_sigma: NDArray[np.float64],
-    reasons: NDArray[np.integer],
-    min_snr: float,
-    ref_channel: int,
-    ref_lon: float,
-    ref_lat: float,
-) -> None:
-    """
-    Write a beammap text file in the format of the MISTRAL ones.
-
-    One row per channel: id, lon and lat offsets (deg), their sigmas (deg) in the two
-    columns where the old files have the Tcal (always zero there), flag: 0 for a good
-    channel, otherwise the sum of its :class:`ChannelFlag`, listed in the header. The
-    header gives the date, the number of rows, the columns and the offsets of
-    ``ref_channel`` from the boresight, which were subtracted from all the others.
-    :func:`~tolomeo.io.read_scan` reads the columns 1, 2, 3 and 6 only, and keeps
-    the channels with flag 0, as for the old files.
-
-    Parameters
-    ----------
-    path : str or :class:`~pathlib.Path`
-        File to write; an existing one is replaced.
-    channel_ids : :class:`~numpy.ndarray` of int
-        Ids of the channels.
-        Shape ``(n_det,)``.
-    lon, lat : :class:`~numpy.ndarray` of float64
-        Offsets relative to ``ref_channel``, in degrees; NaN for a channel with no
-        fit, written as 0 (it is flagged).
-        Shape ``(n_det,)``.
-    lon_sigma, lat_sigma : :class:`~numpy.ndarray` of float64
-        Sigmas of the offsets from the fit of every channel, in degrees (the error of
-        the reference channel is not included); NaN written as 0.
-        Shape ``(n_det,)``.
-    reasons : :class:`~numpy.ndarray` of int
-        Flag of every channel: 0 for a good one, otherwise the sum of its
-        :class:`ChannelFlag`.
-        Shape ``(n_det,)``.
-    min_snr : float
-        Threshold of :attr:`ChannelFlag.LOW_SNR`, written in the header.
-    ref_channel : int
-        Channel whose offsets are zero.
-    ref_lon, ref_lat : float
-        Offsets of ``ref_channel`` from the boresight, in degrees.
-    """
-    # one line per reason of the flag, from ChannelFlag: they cannot diverge
-    flag_lines = [
-        f"  {flag.value} {flag.name}"
-        + (f" (SNR < {min_snr:g})" if flag is ChannelFlag.LOW_SNR else "")
-        for flag in ChannelFlag
-    ]
-    header = "\n".join(
-        [
-            f"Feed list created: {datetime.now().astimezone():%b %d %H:%M:%S %Y}",
-            f"nfeeds: {channel_ids.size}",
-            "Col.1: id",
-            "Col.2: lon-offset (deg)",
-            "Col.3: lat-offset (deg)",
-            "Col.4: lon-offset sigma (deg)",
-            "Col.5: lat-offset sigma (deg)",
-            "Col.6: flag (0=>Ok, otherwise the sum of the reasons below)",
-            *flag_lines,
-            f"chp{ref_channel} az_off (deg): {ref_lon:.12g}",
-            f"chp{ref_channel} el_off (deg): {ref_lat:.12g}",
-        ]
-    )
-    rows = np.column_stack(
-        [
-            channel_ids,
-            np.nan_to_num(lon),
-            np.nan_to_num(lat),
-            np.nan_to_num(lon_sigma),
-            np.nan_to_num(lat_sigma),
-            reasons,
-        ]
-    )
-    np.savetxt(path, rows, fmt=_BEAMMAP_FMT, header=header, comments="# ")
+    return beammap

@@ -8,8 +8,7 @@ from matplotlib.lines import Line2D
 from matplotlib.typing import LegendLocType
 
 from .._lib.units import _to_unit
-from ..beammap import BeamMap
-from ..beammap._estimate import ChannelFlag
+from ..beammap import BeamMap, ChannelFlag
 
 __all__ = ["plot_focal_plane"]
 
@@ -31,6 +30,10 @@ _REASONS = {
         {"marker": "D", "facecolors": "none", "edgecolors": _BAD},
     ),
     ChannelFlag.AT_EDGE: ("at the edge", {"marker": "^", "color": _BAD}),
+    ChannelFlag.UNKNOWN: (
+        "reason unknown",
+        {"marker": "s", "facecolors": "none", "edgecolors": _BAD},
+    ),
 }
 
 
