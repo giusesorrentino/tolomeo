@@ -54,9 +54,10 @@ def info() -> None:
     logger.setLevel(logging.INFO)
 
 
-from . import coords, io, map, mapmaking, plotting, processing, tod
+from . import beammap, coords, io, map, mapmaking, plotting, processing, tod
 
 __all__ = [
+    "beammap",
     "coords",
     "debug",
     "info",
