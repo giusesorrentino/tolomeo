@@ -44,7 +44,7 @@ repos:
         # Forbid files which have a UTF-8 Unicode replacement character.
 
   - repo: https://github.com/zizmorcore/zizmor-pre-commit
-    rev: v1.30.0
+    rev: v1.32.0
     hooks:
       - id: zizmor
 
@@ -57,7 +57,7 @@ repos:
           - tomli
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.6
+    rev: v0.17.5
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
