@@ -146,9 +146,13 @@ def reconstruct_focal_plane(
     hits = to_map(None)
     seen = hits > 0
 
-    # position of every pixel: the mean position of its samples, not its centre (the
-    # rows of the raster are not centred in the pixels); the centres are only used for
-    # the starting point of the fit
+    # position of every pixel: the centroid of the samples that fall in it, not its
+    # centre. The value of a pixel is the mean of the signal on its samples, and the
+    # beam is nearly linear across a pixel, so that mean is the signal at the centroid
+    # (the first-order term cancels). The rows of the raster cut the pixels anywhere:
+    # the centroid can be up to half a pixel from the centre, which would shift the
+    # fit. The samples of every pixel and its value do not change. The centres are
+    # only used for the starting point of the fit, on the regular grid
     x_pix = np.where(seen, to_map(u_bs[good]) / np.maximum(hits, 1), np.nan)
     y_pix = np.where(seen, to_map(v_bs[good]) / np.maximum(hits, 1), np.nan)
     x_centres = (np.arange(nx) + 0.5) * pix - nx * pix / 2
