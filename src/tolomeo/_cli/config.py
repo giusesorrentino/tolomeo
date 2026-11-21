@@ -40,6 +40,7 @@ Example::
 
     noise:                           # arguments of estimate_inverse_noise
       nperseg: 8192                  # samples per block (even); optional, default: auto
+      leave_one_out: false           # optional; true: the source out without a mask
       mask:                          # optional; default: the mask of filtering
         type: radius
         radius: 3.5                  # arcmin
@@ -82,12 +83,12 @@ the same::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import astropy.units as u
 import yaml
 from numpy import deg2rad
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .._lib.units import Kelvin, _to_unit
 from .._typing import ResidualNorm, Solver
@@ -126,6 +127,11 @@ class NoiseConfig(BaseModel):
     keys. ``mask`` leaves samples out of the spectra, with the same keys as
     ``filtering.mask``; without it the mask of ``filtering`` is used. ``background``
     and ``cross_spectra`` are not exposed yet; the threads are ``gls.workers``.
+
+    ``leave_one_out`` removes the source from the TOD of the spectra with the binned
+    map of the other half of the scans, instead of a mask (see
+    ``estimate_inverse_noise``). It excludes ``mask``, and the mask of ``filtering``
+    is not used either. Defaults to ``true``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -133,6 +139,7 @@ class NoiseConfig(BaseModel):
     nperseg: int | None = Field(default=None, ge=2)  # None: chosen automatically
     filters: list[FrequencyFilter] = Field(default_factory=list)
     mask: Mask | None = None
+    leave_one_out: bool = True
 
     @field_validator("nperseg", mode="before")
     @classmethod
@@ -149,6 +156,16 @@ class NoiseConfig(BaseModel):
         if nperseg is not None and nperseg % 2:
             raise ValueError(f"`nperseg` must be even, got {nperseg}.")
         return nperseg
+
+    @model_validator(mode="after")
+    def _mask_or_leave_one_out(self) -> Self:
+        """Refuse a mask with the leave-one-out, which does not need one."""
+        if self.leave_one_out and self.mask is not None:
+            raise ValueError(
+                "`mask` and `leave_one_out` exclude each other: the leave-one-out "
+                "removes the source without a mask."
+            )
+        return self
 
 
 class GLSConfig(BaseModel):

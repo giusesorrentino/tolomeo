@@ -166,13 +166,17 @@ class RunMapmaker:
         """
         ``estimate_inverse_noise(scan, ...)`` with the fields of ``config.noise``.
 
-        ``nperseg``, ``filters`` and ``mask`` map one to one onto its arguments (same
-        names; ``nperseg`` None is the automatic choice). Without ``noise.mask`` the
-        mask of ``config.filtering`` is used, so that the source stays out of the
-        spectra. The threads are ``config.gls.workers``.
+        ``nperseg``, ``filters``, ``mask`` and ``leave_one_out`` map one to one onto
+        its arguments (same names; ``nperseg`` None is the automatic choice). Without
+        ``noise.mask`` the mask of ``config.filtering`` is used, so that the source
+        stays out of the spectra, unless ``noise.leave_one_out`` removes it without a
+        mask. The threads are ``config.gls.workers``.
         """
         noise = self.config.noise
-        mask = noise.mask if noise.mask is not None else self.config.filtering.mask
+        if noise.leave_one_out:
+            mask = None  # NoiseConfig refuses noise.mask with the leave-one-out
+        else:
+            mask = noise.mask if noise.mask is not None else self.config.filtering.mask
         return estimate_inverse_noise(
             scan=scan,
             nperseg=noise.nperseg,
@@ -181,6 +185,7 @@ class RunMapmaker:
             geometry=self.config.geometry,
             background=None,
             cross_spectra=False,
+            leave_one_out=noise.leave_one_out,
             workers=self.config.gls.workers,
         )
 

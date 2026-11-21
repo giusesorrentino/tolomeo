@@ -1,8 +1,18 @@
 import numpy as np
 import pytest
 
-from tests.common import MJD_START, SAMPLE_RATE, make_scan
+from tests.common import (
+    MJD_START,
+    N_SUBSCANS,
+    SAMPLE_RATE,
+    SUBSCAN_LEN,
+    make_scan,
+    make_two_passes,
+    pixelized_source,
+    with_signal,
+)
 from tolomeo._signal.filters import gain
+from tolomeo.map import MapGeometry
 from tolomeo.mapmaking import InverseNoise, estimate_inverse_noise
 from tolomeo.mapmaking._noise import (
     _FLOOR_FACTOR,
@@ -193,6 +203,81 @@ def test_estimate_inverse_noise_nan_raises():
 # -----------------------------------------------------------------------------
 # helpers
 # -----------------------------------------------------------------------------
+
+
+def _two_passes_on_a_source(sigma=1.0, amplitude=100.0):
+    """
+    Two passes over a bright source, sampled at the centres of the pixels of the
+    returned geometry, with white noise of rms ``sigma``.
+
+    The source is constant inside every pixel, so a binned map models it exactly.
+    """
+    scan = make_two_passes(subscan_len=4096, noise_rms=sigma)
+    geometry = MapGeometry.from_scan(scan, pixel_size=10.0)
+    _, source = pixelized_source(scan, geometry, amplitude)
+    return with_signal(scan, scan.tod.signal + source), geometry
+
+
+def test_estimate_inverse_noise_leave_one_out_removes_the_source():
+    # Check that the leave-one-out gives back the level of the white noise under a
+    # bright source, fs / (2 sigma^2), while the plain estimate sees the source at the
+    # low frequencies. The model of each half adds sigma^2 / hits to the variance,
+    # about 0.6% with ~170 samples per pixel: within the tolerance.
+    sigma = 1.0
+    scan, geometry = _two_passes_on_a_source(sigma=sigma)
+    white = scan.tod.sample_rate / (2 * sigma**2)
+
+    plain = estimate_inverse_noise(scan, nperseg=256, workers=1)
+    loo = estimate_inverse_noise(
+        scan, nperseg=256, geometry=geometry, leave_one_out=True, workers=1
+    )
+
+    level = np.median(loo.inv_noiseps[1:-1], axis=0)
+    np.testing.assert_allclose(level, white, rtol=0.03)
+    assert np.all(np.median(plain.inv_noiseps[1:9], axis=0) < 0.2 * white)
+
+
+def test_estimate_inverse_noise_leave_one_out_single_subscan_raises():
+    scan = make_scan(n_subscans=1, subscan_len=1024)
+    geometry = MapGeometry.from_scan(scan, pixel_size=10.0)
+
+    with pytest.raises(ValueError, match="single subscan"):
+        estimate_inverse_noise(
+            scan, nperseg=128, geometry=geometry, leave_one_out=True, workers=1
+        )
+
+
+def test_estimate_inverse_noise_leave_one_out_one_raster_raises():
+    # Check that one raster cut in two is refused: the halves see different rows.
+    scan = make_scan()
+    geometry = MapGeometry.from_scan(scan, pixel_size=10.0)
+
+    with pytest.raises(ValueError, match="at least two scans"):
+        estimate_inverse_noise(
+            scan, nperseg=128, geometry=geometry, leave_one_out=True, workers=1
+        )
+
+
+@pytest.mark.parametrize(
+    ("update", "match"),
+    [
+        ({"mask": EdgeMask()}, "a mask"),
+        ({"background": np.ones(2 * N_SUBSCANS * SUBSCAN_LEN, dtype=bool)}, "a mask"),
+        ({"geometry": None}, "needs `geometry`"),
+    ],
+    ids=["mask", "background", "no-geometry"],
+)
+def test_estimate_inverse_noise_leave_one_out_invalid_arguments_raise(update, match):
+    scan = make_two_passes()
+    arguments = {
+        "nperseg": 128,
+        "geometry": MapGeometry.from_scan(scan, pixel_size=10.0),
+        "leave_one_out": True,
+        "workers": 1,
+    }
+
+    with pytest.raises(ValueError, match=match):
+        estimate_inverse_noise(scan, **(arguments | update))
 
 
 def test_noise_background_both_given_raises():

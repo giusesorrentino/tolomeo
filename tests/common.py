@@ -147,6 +147,41 @@ def make_scan(
     )
 
 
+def make_two_passes(**kwargs):
+    """
+    Two passes of the raster of ``make_scan`` over the same field, one after the
+    other, as two scans read together: the second starts when the first ends.
+
+    ``kwargs`` go to both ``make_scan``; the noise of the second pass has another
+    seed, so the two are independent.
+    """
+    first = make_scan(**kwargs)
+    second = make_scan(**(kwargs | {"seed": kwargs.get("seed", 0) + 1}))
+    n_first = first.tod.signal.shape[0]
+    shift = n_first / SAMPLE_RATE / 86400  # days
+
+    def join(a, b):
+        return np.concatenate([a, b])
+
+    tod = first.tod.model_copy(
+        update={
+            "signal": join(first.tod.signal, second.tod.signal),
+            "time": join(first.tod.time, second.tod.time + shift),
+            "flags": join(first.tod.flags, second.tod.flags),
+            "segments": join(first.tod.segments, second.tod.segments[1:] + n_first),
+        }
+    )
+    names = ["ra", "dec", "par_angle", "az", "el", "source_ra", "source_dec"]
+    first_coords, second_coords = first.coordinates, second.coordinates
+    coords = first_coords.model_copy(
+        update={
+            name: join(getattr(first_coords, name), getattr(second_coords, name))
+            for name in names
+        }
+    )
+    return first.model_copy(update={"tod": tod, "coordinates": coords})
+
+
 def with_signal(scan, signal):
     """Copy of ``scan`` with ``signal`` instead of its TOD."""
     return scan.model_copy(

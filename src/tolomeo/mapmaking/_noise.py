@@ -44,6 +44,7 @@ from ..map import MapGeometry
 from ..processing.config import Bandpass, FrequencyFilter, Highpass, Lowpass
 from ..processing.masks import Mask, RadiusMask
 from ..tod import Scan
+from ._pointing import _pointing_matrix
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,11 @@ _FLOOR_FACTOR = 1e-6
 # largest fraction of the good samples that the automatic block length may leave in
 # segments shorter than one block. A choice, not a standard value
 _MAX_DISCARDED = 0.1
+
+# smallest fraction of the good samples that the leave-one-out must be able to clean
+# (in pixels seen by the other half): below it, most of the TOD would be interpolated,
+# as with a mask. A choice, not a standard value
+_MIN_COVERAGE = 0.5
 
 __all__ = ["estimate_inverse_noise"]
 
@@ -183,6 +189,7 @@ def estimate_inverse_noise(
     geometry: MapGeometry | None = None,
     background: NDArray[np.bool_] | None = None,
     cross_spectra: bool = False,
+    leave_one_out: bool = False,
     workers: int | None = -1,
 ) -> InverseNoise:
     """
@@ -208,7 +215,7 @@ def estimate_inverse_noise(
         samples (``scan.tod.flags`` False) are left out too. Give either ``mask`` or
         ``background``, not both.
     geometry : :class:`~tolomeo.map.MapGeometry`, optional
-        Needed only by a ``RadiusMask``.
+        Needed by a ``RadiusMask`` and by ``leave_one_out``.
     background : :class:`~numpy.ndarray` of bool, optional
         ``True`` for the samples used to estimate the spectra (far from the source).
         None, and no ``mask``, means ``scan.tod.flags``. Shape ``(n_samples,)`` or
@@ -216,6 +223,13 @@ def estimate_inverse_noise(
     cross_spectra : bool
         Also estimate the cross spectra of the detector pairs. Not implemented yet:
         True raises ``NotImplementedError``. Defaults to ``False``.
+    leave_one_out : bool, optional
+        Remove the source from the TOD instead of masking it: the TOD is cut in two
+        halves at the boundary of subscans nearest to its middle, and each half is
+        cleaned with the binned map of the other one on ``geometry`` (see
+        :func:`_leave_one_out_residual`). It needs ``geometry``, at least two scans of
+        the same field and a calibrated TOD, and excludes ``mask`` and ``background``.
+        Defaults to ``False``.
     workers : int, optional
         Maximum number of workers to use for parallel computation. If negative,
         the value wraps around from ``os.cpu_count()``.
@@ -227,6 +241,17 @@ def estimate_inverse_noise(
     sample_rate = scan.tod.sample_rate
     n_det = scan.tod.signal.shape[1]
     workers = _resolve_workers(workers)
+
+    if leave_one_out and (mask is not None or background is not None):
+        raise ValueError(
+            "`leave_one_out` removes the source without a mask: do not give `mask` "
+            "or `background` with it."
+        )
+    if leave_one_out and geometry is None:
+        raise ValueError(
+            "`leave_one_out` needs `geometry`: the model of the sky is a binned map "
+            "on that grid."
+        )
 
     # the cutoffs of the filters are checked here, before the slow estimate
     passband = _noise_passband(scan.tod.passband, filters, sample_rate)
@@ -242,8 +267,13 @@ def estimate_inverse_noise(
     if nperseg < 2 or nperseg % 2:
         raise ValueError(f"`nperseg` must be even and at least 2, got {nperseg}.")
 
+    # the TOD of the estimate: the scan itself, or the scan without the source
+    tod = scan.tod.signal
+    if leave_one_out:
+        tod, background = _leave_one_out_residual(scan, geometry, background, workers)
+
     inv_noiseps, det_pairs = _build_noise_model(
-        scan.tod.signal,
+        tod,
         sample_rate,
         nperseg=nperseg,
         background=background,
@@ -711,3 +741,104 @@ def _marginalize(
     inv[0, :] = 0.0
 
     return inv
+
+
+def _leave_one_out_residual(
+    scan: Scan,
+    geometry: MapGeometry,
+    background: NDArray[np.bool_],
+    workers: int = 1,
+) -> tuple[NDArray[np.float64], NDArray[np.bool_]]:
+    """
+    TOD without the source, for the spectra: each half cleaned with the other one.
+
+    The TOD is cut at the boundary of subscans nearest to its middle, into A and B.
+    The binned map of each half on ``geometry``, with all the detectors together, is a
+    model of the sky without the noise of the other half: ``r_A = d_A - P_A m_B`` and
+    ``r_B = d_B - P_B m_A`` keep the noise and lose the source. A sample is usable if
+    it is in ``background``, inside the map and in a pixel that the other half sees;
+    the others get 0 in the residual and False in the mask, and the spectral estimate
+    interpolates them.
+
+    Parameters
+    ----------
+    scan : :class:`~tolomeo.tod.Scan`
+        Cleaned and calibrated scan: all the detectors go into the same maps, so they
+        must have the same units and sign.
+    geometry : :class:`~tolomeo.map.MapGeometry`
+        Grid of the maps, in a frame where the sky does not move from one scan to the
+        next.
+    background : :class:`~numpy.ndarray` of bool
+        True for the good samples. Shape ``(n_samples,)`` or ``(n_samples, n_det)``.
+    workers : int
+        Threads of the pointing. Defaults to ``1``.
+
+    Returns
+    -------
+    residual : :class:`~numpy.ndarray` of float64
+        The TOD minus the model of the other half, 0 where the sample is not usable.
+        Shape ``(n_samples, n_det)``.
+    usable : :class:`~numpy.ndarray` of bool
+        True for the samples that the spectra can use. Shape ``(n_samples, n_det)``.
+
+    Raises
+    ------
+    ValueError
+        If the scan has a single subscan, or if fewer than ``_MIN_COVERAGE`` of the
+        good samples fall in pixels that the other half sees: the two halves are not
+        two scans of the same field.
+    """
+    signal = scan.tod.signal
+    n_samples = signal.shape[0]
+    n_pixels = geometry.n_pixels
+
+    # boundary of subscans nearest to the middle. The first and the last boundaries
+    # are 0 and n_samples: one of them is the nearest only with a single subscan
+    segments = scan.tod.segments
+    half = int(segments[np.argmin(np.abs(segments - n_samples / 2))])
+    if half in (0, n_samples):
+        raise ValueError(
+            "The scan has a single subscan: the leave-one-out needs at least two "
+            "scans of the same field."
+        )
+
+    pixels, inside = _pointing_matrix(
+        scan.coordinates, scan.offsets, geometry, workers=workers
+    )
+    if background.ndim == 1:
+        background = background[:, None]
+    ok = inside & background
+
+    pixels_a, pixels_b = pixels[:half], pixels[half:]
+    signal_a, signal_b = signal[:half], signal[half:]
+    ok_a, ok_b = ok[:half], ok[half:]
+
+    # binned map of each half: the sum of its samples in every pixel over their
+    # number, NaN where it has none
+    hits_a = np.bincount(pixels_a[ok_a], minlength=n_pixels)
+    hits_b = np.bincount(pixels_b[ok_b], minlength=n_pixels)
+    sum_a = np.bincount(pixels_a[ok_a], weights=signal_a[ok_a], minlength=n_pixels)
+    sum_b = np.bincount(pixels_b[ok_b], weights=signal_b[ok_b], minlength=n_pixels)
+    map_a = np.divide(sum_a, hits_a, where=hits_a > 0, out=np.full_like(sum_a, np.nan))
+    map_b = np.divide(sum_b, hits_b, where=hits_b > 0, out=np.full_like(sum_b, np.nan))
+
+    # each half minus the map of the other one, read in its pixels; a sample whose
+    # pixel the other half does not see has no model
+    usable_a = ok_a & (hits_b[pixels_a] > 0)
+    usable_b = ok_b & (hits_a[pixels_b] > 0)
+    res_a = np.where(usable_a, signal_a - map_b[pixels_a], 0.0)
+    res_b = np.where(usable_b, signal_b - map_a[pixels_b], 0.0)
+
+    # about 1 for two scans of the same field, about 0 for one raster cut in two
+    coverage = (usable_a.sum() + usable_b.sum()) / max(ok.sum(), 1)
+    logger.info(
+        f"[NOISE] Leave-one-out: {100 * coverage:.1f}% of the good samples are in "
+        "pixels seen by the other half"
+    )
+    if coverage < _MIN_COVERAGE:
+        raise ValueError(
+            f"Only {coverage:.0%} of the good samples fall in pixels seen by the other "
+            "half: the leave-one-out needs at least two scans of the same field."
+        )
+
+    return np.concatenate([res_a, res_b]), np.concatenate([usable_a, usable_b])

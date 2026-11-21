@@ -33,6 +33,12 @@ def test_noise_config_defaults():
     assert config.nperseg is None  # auto
     assert config.filters == []
     assert config.mask is None
+    assert config.leave_one_out is False
+
+
+def test_noise_config_mask_and_leave_one_out_raises():
+    with pytest.raises(ValueError, match="exclude each other"):
+        NoiseConfig(mask={"type": "radius", "radius": 1.0}, leave_one_out=True)
 
 
 @pytest.mark.parametrize("nperseg", ["auto", "AUTO", " Auto "])

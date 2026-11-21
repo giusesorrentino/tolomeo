@@ -10,6 +10,7 @@ from tests.common import (
     PIXEL_SIZE,
     RA0,
     make_scan,
+    make_two_passes,
     write_skydip,
 )
 from tolomeo._cli.config import (
@@ -171,5 +172,23 @@ def test_estimate_noise_uses_the_mask_of_filtering(tmp_path):
 
     expected = estimate_inverse_noise(
         config.scan, nperseg=128, mask=mask, geometry=GEOMETRY, workers=1
+    )
+    np.testing.assert_allclose(inv_noise.inv_noiseps, expected.inv_noiseps)
+
+
+def test_estimate_noise_leave_one_out_without_the_mask_of_filtering(tmp_path):
+    # Check that with noise.leave_one_out the mask of the filtering is not passed:
+    # estimate_inverse_noise would refuse it.
+    config = _config(
+        tmp_path,
+        scan=make_two_passes(),
+        filtering=FilteringConfig(mask=RadiusMask(radius=0.5)),
+        noise=NoiseConfig(nperseg=128, leave_one_out=True),
+    )
+
+    inv_noise = RunMapmaker(config)._estimate_noise(config.scan)
+
+    expected = estimate_inverse_noise(
+        config.scan, nperseg=128, geometry=GEOMETRY, leave_one_out=True, workers=1
     )
     np.testing.assert_allclose(inv_noise.inv_noiseps, expected.inv_noiseps)
