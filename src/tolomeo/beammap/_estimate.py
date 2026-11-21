@@ -1,5 +1,6 @@
 import logging
 import warnings
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import astropy.units as u
@@ -9,6 +10,7 @@ from scipy.ndimage import gaussian_filter
 from scipy.optimize import OptimizeWarning, curve_fit
 from scipy.spatial.distance import pdist, squareform
 
+from .._lib.parallel import _resolve_workers
 from .._lib.units import _to_unit
 from ..coords.transforms import radec2xy, rot
 from ..io.beammap import write_beammap
@@ -47,6 +49,7 @@ def reconstruct_focal_plane(
     fwhm: float | str = 12.0,
     min_snr: float = 10.0,
     output: str | Path | None = None,
+    workers: int | None = -1,
 ) -> BeamMap:
     r"""
     Offsets, beams and gains of the detectors from a scan on a bright source.
@@ -84,6 +87,9 @@ def reconstruct_focal_plane(
         Beammap text file to write, in the format of the MISTRAL ones (see
         :func:`~tolomeo.io.write_beammap`). Defaults to ``None``: nothing is
         written.
+    workers : int, optional
+        Maximum number of workers to use for parallel computation. If negative,
+        the value wraps around from ``os.cpu_count()``. Defaults to ``-1``.
 
     Returns
     -------
@@ -189,19 +195,11 @@ def reconstruct_focal_plane(
     )
     maps *= signs[:, None, None]
 
-    x0 = np.full(n_det, np.nan)
-    y0 = np.full(n_det, np.nan)
-    x0_err = np.full(n_det, np.nan)
-    y0_err = np.full(n_det, np.nan)
-    snr = np.full(n_det, np.nan)
-    reasons = np.zeros(n_det, dtype=np.int64)
-
-    for j in range(n_det):
-        m = maps[j]
-        err = noise[j] / np.sqrt(np.maximum(hits, 1))  # error of every pixel
+    def fit_channel(channel_map, noise):
+        err = noise / np.sqrt(np.maximum(hits, 1))  # error of every pixel
 
         # starting point: brightest pixel of the map smoothed over one beam
-        smooth = gaussian_filter(m, smooth_sigma)
+        smooth = gaussian_filter(channel_map, smooth_sigma)
         k_y, k_x = np.unravel_index(np.argmax(smooth), smooth.shape)
         x_start, y_start = x_centre[k_y, k_x], y_centre[k_y, k_x]
 
@@ -209,29 +207,39 @@ def reconstruct_focal_plane(
         cut = seen & (np.hypot(x_centre - x_start, y_centre - y_start) < radius)
         p0 = [smooth[k_y, k_x], x_start, y_start, fwhm * _FWHM2SIGMA, 0.0]
         try:
-            with warnings.catch_warnings():
-                # a covariance that cannot be estimated is a failed fit
-                warnings.simplefilter("error", OptimizeWarning)
-                p, cov = curve_fit(
-                    _gaussian_2d,
-                    np.vstack([x_pix[cut], y_pix[cut]]),
-                    m[cut],
-                    p0=p0,
-                    sigma=err[cut],
-                    absolute_sigma=True,
-                )
+            p, cov = curve_fit(
+                _gaussian_2d,
+                np.vstack([x_pix[cut], y_pix[cut]]),
+                channel_map[cut],
+                p0=p0,
+                sigma=err[cut],
+                absolute_sigma=True,
+            )
         except (RuntimeError, ValueError, OptimizeWarning):
-            reasons[j] |= ChannelFlag.FIT_FAILED
-            continue  # no fit: the detector stays flagged
+            return np.nan, np.nan, np.nan, np.nan, np.nan
 
         errors = np.sqrt(np.diag(cov))
-        x0[j], y0[j] = p[1], p[2]
-        x0_err[j], y0_err[j] = errors[1], errors[2]
-        snr[j] = p[0] / errors[0]
+        x0, y0 = p[1], p[2]
+        x0_err, y0_err = errors[1], errors[2]
+        snr = p[0] / errors[0]
 
-        if np.abs(x0[j]) > edge_x or np.abs(y0[j]) > edge_y:
-            reasons[j] |= ChannelFlag.AT_EDGE
+        return x0, y0, x0_err, y0_err, snr
 
+    workers = _resolve_workers(workers)
+    with warnings.catch_warnings():
+        # a covariance that cannot be estimated is a failed fit
+        warnings.simplefilter("error", OptimizeWarning)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [
+                executor.submit(fit_channel, maps[j], noise[j]) for j in range(n_det)
+            ]
+            results = [future.result() for future in futures]
+
+    x0, y0, x0_err, y0_err, snr = np.array(results).T
+
+    reasons = np.zeros(n_det, dtype=np.int64)
+    reasons[~np.isfinite(x0)] |= ChannelFlag.FIT_FAILED
+    reasons[(np.abs(x0) > edge_x) | (np.abs(y0) > edge_y)] |= ChannelFlag.AT_EDGE
     reasons[snr < min_snr] |= ChannelFlag.LOW_SNR
 
     # offsets: minus the position of the source, in radians, relative to ref_channel

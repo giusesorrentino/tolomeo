@@ -115,6 +115,17 @@ def test_reconstruct_focal_plane_reference_without_fit_raises():
         reconstruct_focal_plane(with_signal(scan, signal), REF, **OPTIONS)
 
 
+def test_reconstruct_focal_plane_same_result_with_threads():
+    # Check that the fits in parallel threads give the same beammap as one thread.
+    scan = _beammap_scan(gains=(-1.0, -0.002, -1.0, -1.0))  # one channel LOW_SNR
+
+    serial = reconstruct_focal_plane(scan, REF, workers=None, **OPTIONS)
+    parallel = reconstruct_focal_plane(scan, REF, workers=4, **OPTIONS)
+
+    for name in ["flags", "lon", "lat", "lon_error", "lat_error"]:
+        np.testing.assert_array_equal(getattr(parallel, name), getattr(serial, name))
+
+
 def test_reconstruct_focal_plane_writes_the_output(tmp_path):
     path = tmp_path / "beammap.dat"
 
