@@ -1,7 +1,9 @@
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.axes import Axes
@@ -23,6 +25,9 @@ CMB_RGB_FILE = (
 # levels of the contours of `plot_map`, as fractions of the peak of the pixels shown
 _CONTOUR_FRACTIONS = (0.1, 0.3, 0.5, 0.7, 0.9)
 
+# characters that LaTeX treats as special, escaped in a unit that astropy cannot read
+_LATEX_SPECIAL = re.compile(r"([_%&#$])")
+
 
 @lru_cache(maxsize=1)
 def _cmb_cmap() -> ListedColormap:
@@ -35,6 +40,43 @@ def _get_cmap(name: str) -> Colormap:
     return _cmb_cmap() if name == "cmb" else plt.get_cmap(name)
 
 
+def _colorbar_label(unit: str | None) -> str:
+    r"""
+    Label of the colorbar of a map in ``unit``.
+
+    Parameters
+    ----------
+    unit : str or None
+        Unit of the map, a FITS unit string as in :class:`~tolomeo.map.MapResult`;
+        None if it is not known.
+
+    Returns
+    -------
+    str
+        "Temperature" for a temperature (Rayleigh-Jeans, as in
+        :meth:`~tolomeo.map.MapResult.to`), "Surface brightness" for a flux density per
+        beam and "Signal" for any other unit, followed by the unit in LaTeX, for
+        example ``"Temperature [$\mathrm{mK}_\mathrm{RJ}$]"``. Without a unit it is
+        ``"Signal [arbitrary units]"``; a unit that astropy cannot read is shown as it
+        is.
+    """
+    if unit is None:
+        return "Signal [arbitrary units]"
+    try:
+        parsed = u.Unit(unit, format="fits")
+    except ValueError:
+        escaped = _LATEX_SPECIAL.sub(r"\\\1", unit)
+        return f"Signal [{escaped}]"
+
+    # astropy writes the unit in math mode, for example "$\mathrm{mJy\,beam^{-1}}$"
+    symbol = parsed.to_string("latex_inline").strip("$")
+    if parsed.physical_type == "temperature":
+        return rf"Temperature [${symbol}_\mathrm{{RJ}}$]"
+    if parsed.is_equivalent(u.Jy / u.beam):
+        return rf"Surface brightness [${symbol}$]"
+    return rf"Signal [${symbol}$]"
+
+
 def plot_map(
     result: MapResult | BinnedMapResult,
     percentiles: tuple[float, float] | None = None,
@@ -43,7 +85,7 @@ def plot_map(
     vmax: float | None = None,
     axes: PlotAxes = "offset",
     cmap: str = "afmhot",
-    label: str = "Temperature [K$_\\mathrm{{RJ}}$]",
+    label: str | None = None,
     offset: Literal["median"] | float | None = "median",
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
@@ -52,6 +94,10 @@ def plot_map(
     """ci penso dopo al docstring"""
     if axes not in ("offset", "radec", "pixel"):
         raise ValueError(f"`axes` must be 'offset' or 'radec', got {axes!r}.")
+
+    if label is None:
+        # a BinnedMapResult has no unit
+        label = _colorbar_label(result.unit if isinstance(result, MapResult) else None)
 
     data = result.image
     hits = result.hits

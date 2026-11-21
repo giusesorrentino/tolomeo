@@ -14,7 +14,7 @@ NX, NY = 20, 16
 GEOMETRY = MapGeometry(nx=NX, ny=NY, pixel_size=6.0, center=(RA0, DEC0))
 
 
-def _map_result(image=None, hits=None):
+def _map_result(image=None, hits=None, unit=None):
     """A MapResult with a Gaussian source on noise, every pixel observed 10 times."""
     if image is None:
         y, x = np.mgrid[:NY, :NX]
@@ -27,6 +27,7 @@ def _map_result(image=None, hits=None):
         residual=1e-4,
         geometry=GEOMETRY,
         solver="cg",
+        unit=unit,
     )
 
 
@@ -58,6 +59,47 @@ def test_plot_map_binned_result():
     fig = plot_map(binned)
 
     assert isinstance(fig, Figure)
+
+    plt.close(fig)
+
+
+@pytest.mark.parametrize(
+    ("unit", "label"),
+    [
+        (None, "Signal [arbitrary units]"),
+        ("K", r"Temperature [$\mathrm{K}_\mathrm{RJ}$]"),
+        ("uK", r"Temperature [$\mathrm{\mu K}_\mathrm{RJ}$]"),
+        ("mJy beam-1", r"Surface brightness [$\mathrm{mJy\,beam^{-1}}$]"),
+        ("Hz", r"Signal [$\mathrm{Hz}$]"),
+        ("K_RJ", r"Signal [K\_RJ]"),  # not a FITS unit: shown as it is, escaped
+    ],
+)
+def test_plot_map_label_from_unit(unit, label):
+    fig = plot_map(_map_result(unit=unit))
+
+    assert fig.axes[1].get_ylabel() == label
+
+    plt.close(fig)
+
+
+def test_plot_map_binned_result_label():
+    # A BinnedMapResult has no unit.
+    result = _map_result()
+    binned = BinnedMapResult(
+        image=result.image, hits=result.hits, std=np.ones((NY, NX)), geometry=GEOMETRY
+    )
+
+    fig = plot_map(binned)
+
+    assert fig.axes[1].get_ylabel() == "Signal [arbitrary units]"
+
+    plt.close(fig)
+
+
+def test_plot_map_explicit_label():
+    fig = plot_map(_map_result(unit="K"), label="Flux")
+
+    assert fig.axes[1].get_ylabel() == "Flux"
 
     plt.close(fig)
 
