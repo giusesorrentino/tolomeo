@@ -53,6 +53,7 @@ filtering:
     - type: common_mode
 noise:
   nperseg: 128
+  leave_one_out: false  # a single scan
 gls:
   workers: 1
 output:

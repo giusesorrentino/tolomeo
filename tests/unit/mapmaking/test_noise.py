@@ -10,7 +10,6 @@ from tests.common import (
     make_scan,
     make_two_passes,
     pixelized_source,
-    with_signal,
 )
 from tolomeo._signal.filters import gain
 from tolomeo.map import MapGeometry
@@ -18,6 +17,7 @@ from tolomeo.mapmaking import InverseNoise, estimate_inverse_noise
 from tolomeo.mapmaking._noise import (
     _FLOOR_FACTOR,
     _STOP_FACTOR,
+    LeaveOneOutError,
     _auto_nperseg,
     _inverse_spectra,
     _shape_inverse,
@@ -203,12 +203,14 @@ def _two_passes_on_a_source(sigma=1.0, amplitude=100.0):
     Two passes over a bright source, sampled at the centres of the pixels of the
     returned geometry, with white noise of rms ``sigma``.
 
-    The source is constant inside every pixel, so a binned map models it exactly.
+    The source is constant inside every pixel, so a binned map models it exactly. The
+    TOD is marked as calibrated, as the leave-one-out wants.
     """
     scan = make_two_passes(subscan_len=4096, noise_rms=sigma)
     geometry = MapGeometry.from_scan(scan, pixel_size=10.0)
     _, source = pixelized_source(scan, geometry, amplitude)
-    return with_signal(scan, scan.tod.signal + source), geometry
+    tod = scan.tod.model_copy(update={"signal": scan.tod.signal + source, "unit": "K"})
+    return scan.model_copy(update={"tod": tod}), geometry
 
 
 def test_estimate_inverse_noise_leave_one_out_removes_the_source():
@@ -234,9 +236,19 @@ def test_estimate_inverse_noise_leave_one_out_single_subscan_raises():
     scan = make_scan(n_subscans=1, subscan_len=1024)
     geometry = MapGeometry.from_scan(scan, pixel_size=10.0)
 
-    with pytest.raises(ValueError, match="single subscan"):
+    with pytest.raises(LeaveOneOutError, match="single subscan"):
         estimate_inverse_noise(
             scan, nperseg=128, geometry=geometry, leave_one_out=True, workers=1
+        )
+
+
+def test_estimate_inverse_noise_leave_one_out_uncalibrated_warns():
+    scan, geometry = _two_passes_on_a_source()
+    raw = scan.model_copy(update={"tod": scan.tod.model_copy(update={"unit": None})})
+
+    with pytest.warns(UserWarning, match="not calibrated"):
+        estimate_inverse_noise(
+            raw, nperseg=256, geometry=geometry, leave_one_out=True, workers=1
         )
 
 

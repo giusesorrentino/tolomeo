@@ -303,6 +303,7 @@ scan:
   beammap: beammap.dat
 noise:
   nperseg: 128
+  leave_one_out: false  # a single scan
 gls:
   tol: 5.0e-2
 output:

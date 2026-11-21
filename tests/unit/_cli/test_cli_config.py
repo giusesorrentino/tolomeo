@@ -33,7 +33,7 @@ def test_noise_config_defaults():
     assert config.nperseg is None  # auto
     assert config.filters == []
     assert config.mask is None
-    assert config.leave_one_out is False
+    assert config.leave_one_out is True
 
 
 def test_noise_config_mask_and_leave_one_out_raises():
@@ -59,6 +59,7 @@ def test_noise_config_filters_and_mask():
             {"type": "bandpass", "f_lower": 0.1, "f_upper": 20},
         ],
         mask={"type": "radius", "radius": 2},
+        leave_one_out=False,
     )
 
     assert [type(f) for f in config.filters] == [Lowpass, Bandpass]

@@ -35,7 +35,7 @@ def _config(tmp_path, **kwargs):
         "scan": make_scan(),
         "output": OutputConfig(path=tmp_path / "out" / "map.fits"),
         "geometry": GEOMETRY,
-        "noise": NoiseConfig(nperseg=128),
+        "noise": NoiseConfig(nperseg=128, leave_one_out=False),  # a single scan
         # loose: on this short scan the CG does not get much below 1e-2
         "gls": GLSConfig(tol=5e-2, workers=1),
     }
@@ -179,9 +179,13 @@ def test_estimate_noise_uses_the_mask_of_filtering(tmp_path):
 def test_estimate_noise_leave_one_out_without_the_mask_of_filtering(tmp_path):
     # Check that with noise.leave_one_out the mask of the filtering is not passed:
     # estimate_inverse_noise would refuse it.
+    scan = make_two_passes()
+    calibrated = scan.model_copy(
+        update={"tod": scan.tod.model_copy(update={"unit": "K"})}
+    )
     config = _config(
         tmp_path,
-        scan=make_two_passes(),
+        scan=calibrated,
         filtering=FilteringConfig(mask=RadiusMask(radius=0.5)),
         noise=NoiseConfig(nperseg=128, leave_one_out=True),
     )
@@ -191,4 +195,20 @@ def test_estimate_noise_leave_one_out_without_the_mask_of_filtering(tmp_path):
     expected = estimate_inverse_noise(
         config.scan, nperseg=128, geometry=GEOMETRY, leave_one_out=True, workers=1
     )
+    np.testing.assert_allclose(inv_noise.inv_noiseps, expected.inv_noiseps)
+
+
+def test_estimate_noise_single_scan_without_a_mask(tmp_path):
+    # Check that with one scan the leave-one-out gives way, with a warning, to the
+    # spectra of all the good samples: neither it nor the mask of the filtering.
+    config = _config(
+        tmp_path,
+        filtering=FilteringConfig(mask=RadiusMask(radius=0.5)),
+        noise=NoiseConfig(nperseg=128, leave_one_out=True),
+    )
+
+    with pytest.warns(UserWarning, match="estimated without a mask"):
+        inv_noise = RunMapmaker(config)._estimate_noise(config.scan)
+
+    expected = estimate_inverse_noise(config.scan, nperseg=128, workers=1)
     np.testing.assert_allclose(inv_noise.inv_noiseps, expected.inv_noiseps)
