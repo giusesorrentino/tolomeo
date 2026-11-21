@@ -23,3 +23,18 @@ updates:
       prefix: "chore"
     labels:
       - "maintenance"
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore"
+    labels:
+      - "maintenance"
+    groups:
+      pre-commit:
+        patterns:
+          - "*"
