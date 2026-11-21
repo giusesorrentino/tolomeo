@@ -39,6 +39,10 @@ paths:
     one line.
   - The `name : type` line holds only the type, plus `optional` when the argument can be omitted. The shape, the
     default and the units go in the description of the parameter, never on the type line.
+  - The shape and the default are the last sentences of the description and go at the end of its last line when
+    they fit there within 88 columns. Only when they do not fit do they start a new line, whole: "Shape" or
+    "Defaults to" is never separated from its value, and a literal in double backticks is never split across two
+    lines. The default is written "Defaults to ``value``.", never "Default ``value``." or "Default to".
   - Every array gives its dtype (on the type line) and its shape (in the description), and units when they matter.
   - A class is written as a Sphinx role with its full import path and a tilde: `` :class:`~numpy.ndarray` ``,
     `` :class:`~pathlib.Path` ``, `` :class:`~astropy.wcs.WCS` ``, `` :class:`~tolomeo.map.MapResult` ``. The aliases
@@ -56,9 +60,10 @@ paths:
         tod : :class:`~numpy.ndarray` of float64
             Cleaned TOD, in the units of the instrument. Shape ``(n_samples, n_det)``.
         order : int
-            Order of the filter. Default ``1``.
+            Order of the filter. Defaults to ``1``.
         background : :class:`~numpy.ndarray` of bool, optional
-            True for the samples far from the source. Shape ``(n_samples,)``. Default ``None``, all the samples.
+            True for the samples far from the source. Shape ``(n_samples,)``. Defaults to
+            ``None``, all the samples.
 
         Returns
         -------

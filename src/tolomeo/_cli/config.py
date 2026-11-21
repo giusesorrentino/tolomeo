@@ -180,16 +180,13 @@ class CalibrationConfig(BaseModel):
         Directory with the ``GAIN_CAL`` FITS files, or the path of a single FITS file.
     T_atm : float
         Temperature of the atmosphere. A number is in kelvin; ``"267 K"`` or an
-        :class:`~astropy.units.Quantity` is converted to kelvin.
-        Default ``267``.
+        :class:`~astropy.units.Quantity` is converted to kelvin. Defaults to ``267``.
     tau_atm : float
-        Zenith opacity of the atmosphere.
-        Default ``0.16``.
+        Zenith opacity of the atmosphere. Defaults to ``0.16``.
     correct_opacity : bool
         If True the signal is also divided by ``exp(-tau_atm * airmass)``, so that the
         map is the temperature of the source above the atmosphere; if False only by
-        the responsivity.
-        Default ``True``.
+        the responsivity. Defaults to ``True``.
     """
 
     model_config = ConfigDict(extra="forbid")

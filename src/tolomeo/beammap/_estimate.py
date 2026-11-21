@@ -70,16 +70,16 @@ def reconstruct_focal_plane(
         Channel whose offset is set to zero: the offsets are relative to it.
     pixel_size : float or str, optional
         Side of the pixels of the maps. A number is in arcsec. About FWHM / 3 or
-        smaller. Defaults to 4.
+        smaller. Defaults to ``4``.
     fit_radius : float or str, optional
         Radius of the cutout used in the fit, around the brightest pixel of the
-        smoothed map. A number is in arcsec. Two or three FWHM. Defaults to 30.
+        smoothed map. A number is in arcsec. Two or three FWHM. Defaults to ``30``.
     fwhm : float or str, optional
         Expected FWHM of the beam, for the smoothing and the starting point of the
-        fit. A number is in arcsec. Defaults to 12.
+        fit. A number is in arcsec. Defaults to ``12``.
     min_snr : float, optional
         A detector whose fitted amplitude has a lower signal-to-noise ratio is
-        flagged. Defaults to 10.
+        flagged. Defaults to ``10``.
     output : str, :class:`~pathlib.Path` or None, optional
         Beammap text file to write, in the format of the MISTRAL ones (see
         :func:`~tolomeo.io.write_beammap`). Defaults to ``None``: nothing is

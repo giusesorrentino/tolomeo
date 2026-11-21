@@ -60,8 +60,7 @@ class BeamMap(BaseModel):
     ----------
     channel_ids : :class:`~numpy.ndarray` of int
         Id of every channel, the number in the name of its column ``chp_XXX`` in
-        the FITS files. Every id appears once.
-        Shape ``(n_det,)``.
+        the FITS files. Every id appears once. Shape ``(n_det,)``.
     flags : :class:`~numpy.ndarray` of int
         0 for a good channel, otherwise the sum of the reasons why it is flagged,
         the :class:`ChannelFlag`: ``flags & reason`` is nonzero for the channels
@@ -75,20 +74,20 @@ class BeamMap(BaseModel):
         Errors of the offsets from the fit of every channel, in radians (the error
         of the reference channel is not included); NaN for a channel whose fit
         failed. None if not known: the old files have the Tcal in those columns.
-        Shape ``(n_det,)``. Default ``None``.
+        Shape ``(n_det,)``. Defaults to ``None``.
     ref_channel : int or None
         Channel whose offsets are zero, the reference of all the others.
-        Default ``None``.
+        Defaults to ``None``.
     ref_lat, ref_lon : float or None
         Offsets of ``ref_channel`` from the boresight, in radians, subtracted from
-        all the channels. Default ``None``.
+        all the channels. Defaults to ``None``.
     snr_threshold : float or None
         Signal-to-noise ratio below which a channel is flagged
-        :attr:`ChannelFlag.LOW_SNR`. Default ``None``.
+        :attr:`ChannelFlag.LOW_SNR`. Defaults to ``None``.
     source_name : str or None
-        Name of the source of the scan, as in the FITS headers. Default ``None``.
+        Name of the source of the scan, as in the FITS headers. Defaults to ``None``.
     time_range : tuple of float or None
-        Start and end of the scan, in MJD (UTC). Default ``None``.
+        Start and end of the scan, in MJD (UTC). Defaults to ``None``.
 
     Raises
     ------

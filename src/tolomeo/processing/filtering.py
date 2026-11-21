@@ -304,10 +304,10 @@ def clean_subscans(
         Data to clean. It is not modified.
     common_mode : :class:`~tolomeo.processing.CommonMode` or None, optional
         Parameters of the common mode removal. None skips the step.
-        Default ``CommonMode()``.
+        Defaults to ``CommonMode()``.
     baseline : :class:`~tolomeo.processing.Baseline` or None, optional
         Parameters of the baseline removal. None skips the step.
-        Default ``Baseline()``.
+        Defaults to ``Baseline()``.
     background : :class:`~numpy.ndarray` of bool, optional
         True for the samples far from the source, the only ones used to
         estimate the common mode and the baseline. With shape ``(n_samples,)``
@@ -315,7 +315,7 @@ def clean_subscans(
         each detector has its own. None means all the samples.
     overwrite_scan : bool, optional
         If True, ``scan.tod.signal`` is modified in place instead of copied.
-        Default ``False``.
+        Defaults to ``False``.
 
     Returns
     -------
@@ -347,8 +347,8 @@ def process_tod(
         ``(n_samples, n_det)``.
     config : :class:`~tolomeo.processing.FilteringConfig`, optional
         Steps to run and their parameters, and the optional ``mask`` that leaves the
-        source out of the fits. Default None, which is ``FilteringConfig()``: the common
-        mode and a linear baseline of each subscan.
+        source out of the fits. Defaults to ``None``, which is ``FilteringConfig()``:
+        the common mode and a linear baseline of each subscan.
     background : :class:`~numpy.ndarray` of bool, optional
         True for the samples far from the source, the only ones used by the steps
         that work subscan by subscan. With shape ``(n_samples,)`` the same samples
@@ -357,7 +357,7 @@ def process_tod(
         None (and no ``config.mask``) means all the samples.
     overwrite_scan : bool, optional
         If True, ``scan.tod.signal`` is modified in place instead of copied.
-        Default ``False``.
+        Defaults to ``False``.
     geometry : :class:`~tolomeo.map.MapGeometry`, optional
         Grid of the map that will be made from the cleaned scan. It is needed only
         with a :class:`~tolomeo.processing.RadiusMask`: the distance from the source

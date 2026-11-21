@@ -119,25 +119,21 @@ def gls_map(
         ``"minres"``, preconditioned MINRES, whose residual in the ``"m_inverse"`` norm
         decreases at every iteration. In the tests of ROMA (``README_solvers.md``) the
         CG gave maps closer to the GLS solution at the same tolerance.
-        Default ``"cg"``.
+        Defaults to ``"cg"``.
     residual_norm : :class:`~tolomeo._typing.ResidualNorm`
         Norm of the relative residual that stops the solver, with ``r = b - A m``
         (ROMA's ``itol`` 1, 2 and 3): ``"plain"`` is ``||r|| / ||b||``,
         ``"preconditioned"`` is ``||M^-1 r|| / ||M^-1 b||`` and ``"m_inverse"`` is
-        ``sqrt(r . M^-1 r) / sqrt(b . M^-1 b)``.
-        Default ``"plain"``.
+        ``sqrt(r . M^-1 r) / sqrt(b . M^-1 b)``. Defaults to ``"plain"``.
     tol : float
-        Relative residual at which the solver stops.
-        Default ``1e-3``.
+        Relative residual at which the solver stops. Defaults to ``1e-3``.
     maxiter : int
-        Maximum number of iterations of the solver.
-        Default ``300``.
+        Maximum number of iterations of the solver. Defaults to ``300``.
     min_hits_frac : float, optional
         Use only the samples that fall in the pixels with at least ``min_hits_frac`` times
         the hits of the most observed pixel: the others are flagged like the samples
         outside the map, and their pixels stay empty (hits 0). Between 0 (included) and 1
-        (excluded). None means every pixel.
-        Default None.
+        (excluded). None means every pixel. Defaults to ``None``.
     workers : int, optional
         Threads of the pointing and the solver, with SciPy's convention:
         None is one thread, a positive number that many, ``-1`` all the cores, ``-2``
@@ -341,15 +337,14 @@ def _bin(
     Parameters
     ----------
     pixels, used : :class:`~numpy.ndarray`
-        Pixel of every sample, and whether it is used.
-        Shape ``(n_samples, n_det)``.
+        Pixel of every sample, and whether it is used. Shape ``(n_samples, n_det)``.
     n_pixels : int
         Pixels of the map.
     values : :class:`~numpy.ndarray` of float64, optional
         What is summed, raised to ``power``. None means 1 for every sample: the sum is
         the number of samples. Shape ``(n_samples, n_det)``.
     power : int
-        Power of ``values``. Default ``1``.
+        Power of ``values``. Defaults to ``1``.
     det_weights : :class:`~numpy.ndarray` of float64, optional
         One factor per detector, applied to the sums of its samples (for example
         ``lag_zero``). Shape ``(n_det,)``.

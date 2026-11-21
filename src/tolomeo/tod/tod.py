@@ -13,18 +13,14 @@ class TimeOrderedData(BaseModel):
     ----------
     signal : :class:`~numpy.ndarray` of float64
         One row per time sample, one column per detector, in the units of the
-        instrument.
-        Shape ``(n_samples, n_det)``.
+        instrument. Shape ``(n_samples, n_det)``.
     time : :class:`~numpy.ndarray` of float64
-        Time of every sample, modified Julian date (days).
-        Shape ``(n_samples,)``.
+        Time of every sample, modified Julian date (days). Shape ``(n_samples,)``.
     flags : :class:`~numpy.ndarray` of bool
-        True for a good sample, the same for all the detectors.
-        Shape ``(n_samples,)``.
+        True for a good sample, the same for all the detectors. Shape ``(n_samples,)``.
     segments : :class:`~numpy.ndarray` of int64
         First row of every subscan, followed by ``n_samples``: subscan ``k`` is
-        ``signal[segments[k]:segments[k + 1]]``.
-        Shape ``(n_subscans + 1,)``.
+        ``signal[segments[k]:segments[k + 1]]``. Shape ``(n_subscans + 1,)``.
     passband : float or 2-tuple of floats, optional
         ...
     unit : str, optional
@@ -52,8 +48,7 @@ class TimeOrderedData(BaseModel):
         Parameters
         ----------
         mask : :class:`~numpy.ndarray` of bool
-            True for the samples to keep.
-            Shape ``(n_samples,)``.
+            True for the samples to keep. Shape ``(n_samples,)``.
 
         Returns
         -------

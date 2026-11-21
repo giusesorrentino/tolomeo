@@ -28,7 +28,7 @@ class ScanSpec(BaseModel):
         Correction added to the boresight RA and Dec (see
         :func:`tolomeo.coords.transforms.shift_boresight`). A number is in arcsec;
         ``"1.5 arcmin"`` or an :class:`~astropy.units.Quantity` is converted to arcsec.
-        Default ``0.0``.
+        Defaults to ``0.0``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -62,10 +62,10 @@ class Scan(BaseModel):
         Length ``n_det``.
     telescope : str, optional
         Name of the telescope, written in the FITS map as ``TELESCOP``.
-        Default ``"SRT"``.
+        Defaults to ``"SRT"``.
     instrument : str, optional
         Name of the instrument, written in the FITS map as ``INSTRUME``.
-        Default ``"MISTRAL"``.
+        Defaults to ``"MISTRAL"``.
     """
 
     # numpy arrays are not pydantic types: they are only checked with isinstance
@@ -85,8 +85,7 @@ class Scan(BaseModel):
         Parameters
         ----------
         mask : :class:`~numpy.ndarray` of bool
-            True for the samples to keep.
-            Shape ``(n_samples,)``.
+            True for the samples to keep. Shape ``(n_samples,)``.
 
         Returns
         -------

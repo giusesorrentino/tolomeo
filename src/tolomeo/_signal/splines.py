@@ -59,8 +59,7 @@ def bspline_basis_from_knots(
     Parameters
     ----------
     t : :class:`~numpy.ndarray` of float64
-        Points where the basis is evaluated.
-        Shape ``(n_t,)``.
+        Points where the basis is evaluated. Shape ``(n_t,)``.
     k : :class:`~numpy.ndarray` of float64
         Knots, increasing (for example from :func:`bspline_knots`).
         Shape ``(n_knots,)``.

@@ -33,17 +33,14 @@ def skydip_responsivity(
         ``channel_ids`` given to it, which for :func:`calibrate` must be
         ``scan.channel_ids``.
     T_atm : float
-        Temperature of the atmosphere, in kelvin.
-        Default ``267``.
+        Temperature of the atmosphere, in kelvin. Defaults to ``267``.
     tau_atm : float
-        Zenith opacity of the atmosphere.
-        Default ``0.16``.
+        Zenith opacity of the atmosphere. Defaults to ``0.16``.
 
     Returns
     -------
     :class:`~numpy.ndarray` of float64
-        Responsivity in signal units per kelvin; it can be negative.
-        Shape ``(n_det,)``.
+        Responsivity in signal units per kelvin; it can be negative. Shape ``(n_det,)``.
 
     Raises
     ------

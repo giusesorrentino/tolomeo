@@ -77,12 +77,10 @@ class InverseNoise(BaseModel):
         of ``channel_ids``, then the cross-spectra (if any).
         Shape ``(n_freqs, n_cols)``, with ``n_freqs = nperseg // 2 + 1``.
     det_pairs : :class:`~numpy.ndarray` of uintp
-        The two detectors of every column of ``inv_noiseps``.
-        Shape ``(n_cols, 2)``.
+        The two detectors of every column of ``inv_noiseps``. Shape ``(n_cols, 2)``.
     lag_zero : :class:`~numpy.ndarray` of float64
         Weight of every detector for the preconditioner: sum of the bins of its
-        auto-spectrum divided by ``nperseg``.
-        Shape ``(n_det,)``.
+        auto-spectrum divided by ``nperseg``. Shape ``(n_det,)``.
     sample_rate : float
         Sampling frequency of the TOD the spectra come from, in Hz.
     channel_ids : list of int
@@ -126,8 +124,7 @@ class InverseNoise(BaseModel):
         Frequency of every bin, in Hz.
 
         The bins of the real FFT of one block of ``nperseg`` samples, the same that
-        ``welch`` gives with the same ``nperseg``.
-        Shape ``(nperseg // 2 + 1,)``.
+        ``welch`` gives with the same ``nperseg``. Shape ``(nperseg // 2 + 1,)``.
         """
         return np.fft.rfftfreq(self.nperseg, d=1 / self.sample_rate)
 
@@ -200,13 +197,11 @@ def estimate_inverse_noise(
         Samples in one block, even: the Welch blocks of the estimate and the filter
         blocks of ``gls_map``. The spectra have ``nperseg // 2 + 1`` bins, spaced by
         ``sample_rate / nperseg``. None chooses it from the segments of the TOD, see
-        :func:`_auto_nperseg`.
-        Default ``8192``.
+        :func:`_auto_nperseg`. Defaults to ``None``.
     filters : sequence of :data:`~tolomeo.processing.FrequencyFilter`
         Filters applied to the inverse spectra, not to the TOD: ``Lowpass``,
         ``Highpass`` or ``Bandpass``, the same objects as the steps of ``process_tod``.
-        Several filters are applied one after the other.
-        Default none.
+        Several filters are applied one after the other. Defaults to ``()``, no filter.
     mask : ``RadiusMask``, ``SigmaClipMask`` or ``EdgeMask``, optional
         Samples left out of the spectra (for example the source), the same objects as
         the ``mask`` of :class:`~tolomeo.processing.FilteringConfig`. The flagged
@@ -216,15 +211,14 @@ def estimate_inverse_noise(
         Needed only by a ``RadiusMask``.
     background : :class:`~numpy.ndarray` of bool, optional
         ``True`` for the samples used to estimate the spectra (far from the source).
-        None, and no ``mask``, means ``scan.tod.flags``.
-        Shape ``(n_samples,)`` or ``(n_samples, n_det)``.
+        None, and no ``mask``, means ``scan.tod.flags``. Shape ``(n_samples,)`` or
+        ``(n_samples, n_det)``.
     cross_spectra : bool
         Also estimate the cross spectra of the detector pairs. Not implemented yet:
-        True raises ``NotImplementedError``.
-        Default ``False``.
+        True raises ``NotImplementedError``. Defaults to ``False``.
     workers : int, optional
-        Threads, with the convention of ``gls_map``: None is one thread, a positive
-        number that many, ``-1`` all the cores.
+        Maximum number of workers to use for parallel computation. If negative,
+        the value wraps around from ``os.cpu_count()``.
 
     Returns
     -------
@@ -383,11 +377,9 @@ def _find_segments(
     Parameters
     ----------
     time : :class:`~numpy.ndarray`
-        Time of every sample, in MJD.
-        Shape ``(n_samples,)``.
+        Time of every sample, in MJD. Shape ``(n_samples,)``.
     ok : :class:`~numpy.ndarray` of bool
-        True for the good samples (``scan.tod.flags``).
-        Shape ``(n_samples,)``.
+        True for the good samples (``scan.tod.flags``). Shape ``(n_samples,)``.
     sample_rate : float
         Sampling frequency in Hz.
 
@@ -396,8 +388,7 @@ def _find_segments(
     :class:`~numpy.ndarray` of intp
         One row per segment: the index of its first sample and the index after its
         last sample, so that segment ``k`` of a detector is ``x[start:stop]``. The
-        indices refer to the full TOD, not to ``time[ok]``.
-        Shape ``(n_segments, 2)``.
+        indices refer to the full TOD, not to ``time[ok]``. Shape ``(n_segments, 2)``.
 
     Raises
     ------
@@ -525,19 +516,15 @@ def _build_noise_model(
         Sampling frequency in Hz.
     nperseg : int
         Samples in one Welch block, as in the filter blocks of the kernel. Every
-        spectrum has ``n_freqs = nperseg // 2 + 1`` bins.
-        Default ``8192``.
+        spectrum has ``n_freqs = nperseg // 2 + 1`` bins. Defaults to ``8192``.
     background : :class:`~numpy.ndarray` of bool, optional
         True for the samples far from the source: one column per detector, or one
-        array for all of them.
-        Shape ``(n_samples, n_det)`` or ``(n_samples,)``.
+        array for all of them. Shape ``(n_samples, n_det)`` or ``(n_samples,)``.
     cross_spectra : bool
         Add one cross-spectrum for every pair of detectors. Not implemented yet: True
-        raises ``NotImplementedError``.
-        Default ``False``.
+        raises ``NotImplementedError``. Defaults to ``False``.
     workers : int
-        Threads: the detectors are estimated in parallel.
-        Default ``1``.
+        Threads: the detectors are estimated in parallel. Defaults to ``1``.
 
     Returns
     -------
@@ -546,8 +533,7 @@ def _build_noise_model(
         Shape ``(n_freqs, n_det)``.
     det_pairs : :class:`~numpy.ndarray` of uintp
         Row ``j`` is ``(j, j)``: column ``j`` of ``inv_noiseps`` is the auto-spectrum
-        of detector ``j``.
-        Shape ``(n_det, 2)``.
+        of detector ``j``. Shape ``(n_det, 2)``.
     """
     # refuse inputs that the estimate cannot work on, before the slow part
     if tod.ndim != 2:
@@ -636,15 +622,13 @@ def _welch_inverse_ps(
     Parameters
     ----------
     x : :class:`~numpy.ndarray`
-        TOD of one detector.
-        Shape ``(n_samples,)``.
+        TOD of one detector. Shape ``(n_samples,)``.
     sample_rate : float
         Sampling frequency in Hz.
     nperseg : int
         Samples in one Welch block.
     background : :class:`~numpy.ndarray` of bool, optional
-        True for the samples used. None means all of them.
-        Shape ``(n_samples,)``.
+        True for the samples used. None means all of them. Shape ``(n_samples,)``.
 
     Returns
     -------

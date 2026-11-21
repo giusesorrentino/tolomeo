@@ -55,8 +55,7 @@ def gain(
     Returns
     -------
     :class:`~numpy.ndarray` of float64
-        ``|H(f)|^2``: real, between 0 and 1, 0.5 at the cutoff.
-        Shape ``(n_freqs,)``.
+        ``|H(f)|^2``: real, between 0 and 1, 0.5 at the cutoff. Shape ``(n_freqs,)``.
     """
     sos = butter(order, fc, btype=btype, fs=sample_rate, output="sos")
     _, h = freqz_sos(sos, worN=freqs, fs=sample_rate)
@@ -94,11 +93,9 @@ def lowpass(
         Sampling frequency in Hz.
     order : int
         Order of the Butterworth filter. It is applied forward and backward,
-        so the roll-off is twice as steep.
-        Default ``4``.
+        so the roll-off is twice as steep. Defaults to ``4``.
     axis : int
-        Time axis of ``data``.
-        Default ``-1``.
+        Time axis of ``data``. Defaults to ``-1``.
 
     Returns
     -------
@@ -147,11 +144,9 @@ def highpass(
         Sampling frequency in Hz.
     order : int
         Order of the Butterworth filter. It is applied forward and backward,
-        so the roll-off is twice as steep.
-        Default ``4``.
+        so the roll-off is twice as steep. Defaults to ``4``.
     axis : int
-        Time axis of ``data``.
-        Default ``-1``.
+        Time axis of ``data``. Defaults to ``-1``.
 
     Returns
     -------
@@ -203,11 +198,9 @@ def bandpass(
     order : int
         Order of the Butterworth filter at each edge of the band; the
         band-pass filter itself has order ``2 * order``. As in
-        :func:`lowpass`, it is applied forward and backward.
-        Default ``4``.
+        :func:`lowpass`, it is applied forward and backward. Defaults to ``4``.
     axis : int
-        Time axis of ``data``.
-        Default ``-1``.
+        Time axis of ``data``. Defaults to ``-1``.
 
     Returns
     -------

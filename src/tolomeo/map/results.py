@@ -21,8 +21,7 @@ class MapResult(BaseModel):
         ``image[iy, ix]``; the flat kernel pixel is ``iy * nx + ix``.
         Shape ``(ny, nx)``.
     hits : :class:`~numpy.ndarray` of int64
-        Number of valid samples that fell in every pixel.
-        Shape ``(ny, nx)``.
+        Number of valid samples that fell in every pixel. Shape ``(ny, nx)``.
     n_iter : int
         Iterations done by the solver.
     residual : float
@@ -41,7 +40,7 @@ class MapResult(BaseModel):
         Shape ``(ny, nx)``.
     converged : bool
         True if the solver reached ``tol``; False if it stopped before, at ``maxiter``
-        or for numerical reasons. Default ``True``.
+        or for numerical reasons. Defaults to ``True``.
     unit : str, optional
         Unit of ``image``, as a FITS unit string (``"K"`` for a calibrated scan). None
         means not known: the raw units of the instrument.
@@ -82,11 +81,9 @@ class BinnedMapResult(BaseModel):
     ----------
     image : :class:`~numpy.ndarray` of float64
         Mean of the samples in every pixel, in the units of the TOD; NaN where
-        ``hits == 0``. Pixel ``(iy, ix)`` is ``image[iy, ix]``.
-        Shape ``(ny, nx)``.
+        ``hits == 0``. Pixel ``(iy, ix)`` is ``image[iy, ix]``. Shape ``(ny, nx)``.
     hits : :class:`~numpy.ndarray` of int64
-        Number of samples used in every pixel.
-        Shape ``(ny, nx)``.
+        Number of samples used in every pixel. Shape ``(ny, nx)``.
     std : :class:`~numpy.ndarray` of float64
         Sample standard deviation in every pixel; NaN where ``hits <= 1``.
         Shape ``(ny, nx)``.

@@ -42,8 +42,7 @@ def shift_boresight(
     Parameters
     ----------
     ra, dec : :class:`~numpy.ndarray` of float64
-        Boresight coordinates, in radians.
-        Shape ``(n_samples,)``.
+        Boresight coordinates, in radians. Shape ``(n_samples,)``.
     dra : float
         Offset along the RA direction, as an angle on the sky, in radians: the RA
         coordinate changes by ``dra / cos(dec)``.
@@ -53,8 +52,7 @@ def shift_boresight(
     Returns
     -------
     ra, dec : :class:`~numpy.ndarray` of float64
-        The shifted coordinates, in radians (new arrays).
-        Shape ``(n_samples,)``.
+        The shifted coordinates, in radians (new arrays). Shape ``(n_samples,)``.
     """
     return ra + dra / np.cos(dec), dec + ddec
 
@@ -93,8 +91,7 @@ def radec2xy(
     x, y : :class:`~numpy.ndarray` of float64
         Coordinates on the plane, in radians, with x growing toward the east
         (increasing RA) and y toward the north. NaN where the projection is not
-        defined.
-        Shape ``(n,)``.
+        defined. Shape ``(n,)``.
     """
 
     dra = np.asarray(ra) - ra0
@@ -172,14 +169,11 @@ def xy2latlon(
     Parameters
     ----------
     x, y : :class:`~numpy.ndarray` of float64
-        Boresight on the projection plane, in radians.
-        Shape ``(n_samples,)``.
+        Boresight on the projection plane, in radians. Shape ``(n_samples,)``.
     par_angle : :class:`~numpy.ndarray` of float64
-        Parallactic angle, in radians.
-        Shape ``(n_samples,)``.
+        Parallactic angle, in radians. Shape ``(n_samples,)``.
     x_offset, y_offset : :class:`~numpy.ndarray` of float64
-        Detector offsets from the boresight, in radians.
-        Shape ``(n_detectors,)``.
+        Detector offsets from the boresight, in radians. Shape ``(n_detectors,)``.
     center_ra, center_dec : float
         Map center, in radians; used only with ``frame="azel"``.
     frame : {"radec", "azel"}
@@ -237,18 +231,15 @@ def radec2latlon(
     Parameters
     ----------
     ra, dec : :class:`~numpy.ndarray` of float64
-        Boresight coordinates, in radians.
-        Shape ``(n_samples,)``.
+        Boresight coordinates, in radians. Shape ``(n_samples,)``.
     center_ra, center_dec : float
         Projection center, in radians.
     projection : :class:`~tolomeo._typing.Projection`
         Projection of the map.
     par_angle : :class:`~numpy.ndarray` of float64
-        Parallactic angle, in radians.
-        Shape ``(n_samples,)``.
+        Parallactic angle, in radians. Shape ``(n_samples,)``.
     x_offset, y_offset : :class:`~numpy.ndarray` of float64
-        Detector offsets from the boresight, in radians.
-        Shape ``(n_detectors,)``.
+        Detector offsets from the boresight, in radians. Shape ``(n_detectors,)``.
     frame : {"radec", "azel"}
         See :func:`xy2latlon`.
 

@@ -115,8 +115,7 @@ def decompose(
     ----------
     D : :class:`~numpy.ndarray`
         TOD, one column per detector. It must be finite: the SVD does not
-        accept NaN.
-        Shape ``(n_samples, n_det)``.
+        accept NaN. Shape ``(n_samples, n_det)``.
     k : int
         Number of modes. It must be smaller than both ``n_samples`` and
         ``n_det``.
@@ -127,8 +126,7 @@ def decompose(
     Returns
     -------
     modes : :class:`~numpy.ndarray`
-        The time modes, from the strongest to the weakest.
-        Shape ``(n_samples, k)``.
+        The time modes, from the strongest to the weakest. Shape ``(n_samples, k)``.
     weights : :class:`~numpy.ndarray`
         How much of each mode is in each detector, in the units of ``D``.
         Shape ``(k, n_det)``.

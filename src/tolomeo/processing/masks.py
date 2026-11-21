@@ -41,7 +41,7 @@ class RadiusMask(BaseModel):
         Center of the source: ``"auto"`` is the position written in the headers of
         the FITS files (:attr:`~tolomeo.tod.Scan.source`), otherwise ``(ra, dec)``.
         Numbers are in degrees; ``"83.6 deg"`` or a quantity is converted to degrees.
-        Default ``"auto"``.
+        Defaults to ``"auto"``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -139,9 +139,9 @@ class SigmaClipMask(BaseModel):
     Attributes
     ----------
     sigma : float
-        Clipping threshold, in standard deviations. Default 6.
+        Clipping threshold, in standard deviations. Defaults to ``6``.
     maxiters : int
-        Maximum number of clipping iterations. Default 10.
+        Maximum number of clipping iterations. Defaults to ``10``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -218,7 +218,7 @@ class EdgeMask(BaseModel):
     ----------
     fraction : float
         Part of each subscan, at each end, that is used: ``0.1`` is the first 10% and
-        the last 10% of the samples. Between 0 and 0.5 (excluded). Default 0.1.
+        the last 10% of the samples. Between 0 and 0.5 (excluded). Defaults to ``0.1``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

@@ -238,8 +238,7 @@ def _read_channel_ids(file: Path) -> NDArray[np.int64]:
     Returns
     -------
     :class:`~numpy.ndarray` of int64
-        The ``XXX`` of the ``chp_XXX`` columns, sorted.
-        Shape ``(n_det,)``.
+        The ``XXX`` of the ``chp_XXX`` columns, sorted. Shape ``(n_det,)``.
 
     Raises
     ------

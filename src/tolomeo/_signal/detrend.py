@@ -57,8 +57,7 @@ def remove_baseline(
         Shape ``(n_samples,)``.
     deg : int
         Degree of the polynomial, smaller than ``n_samples``. With 0 only the mean
-        is removed.
-        Default ``1``.
+        is removed. Defaults to ``1``.
     mask : :class:`~numpy.ndarray` of bool, optional
         True for the samples used in the fit (for example the ones far from the
         source): the same for every detector with shape ``(n_samples,)``, one per
@@ -96,16 +95,14 @@ def remove_spline(
         TOD of one subscan, one column per detector. It must be finite.
         Shape ``(n_samples, n_det)``.
     t : :class:`~numpy.ndarray`
-        Time of every sample, in the unit of ``knots``.
-        Shape ``(n_samples,)``.
+        Time of every sample, in the unit of ``knots``. Shape ``(n_samples,)``.
     knots : :class:`~numpy.ndarray`
         Knots of the spline, for example from
         :func:`~tolomeo._signal.splines.bspline_knots`. They give
         ``len(knots) - order - 1`` basis functions, which must be fewer than
         ``n_samples``.
     order : int
-        Order (degree) of the spline.
-        Default ``3``.
+        Order (degree) of the spline. Defaults to ``3``.
     mask : :class:`~numpy.ndarray` of bool, optional
         True for the samples used in the fit (for example the ones far from the
         source): the same for every detector with shape ``(n_samples,)``, one per
@@ -151,8 +148,7 @@ def _masked_lstsq(
         (the polynomial in time, or the transposed spline basis).
         Shape ``(n_t, n_coef)``.
     block : :class:`~numpy.ndarray`
-        Signal of the subscan, one column per detector.
-        Shape ``(n_t, n_det)``.
+        Signal of the subscan, one column per detector. Shape ``(n_t, n_det)``.
     mask : :class:`~numpy.ndarray` of bool or None
         True for the samples used in the fit: the same for every detector with
         shape ``(n_t,)``, one per detector with ``(n_t, n_det)``. None means all.

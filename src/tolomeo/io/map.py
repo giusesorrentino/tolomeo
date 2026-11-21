@@ -57,8 +57,7 @@ def write_map(
         is stored line by line, so that the FITS file is enough to know it. Characters
         that are not ASCII are written as escape sequences (``\\xe8``).
     overwrite : bool
-        Replace ``path`` if it exists.
-        Default ``False``.
+        Replace ``path`` if it exists. Defaults to ``False``.
     """
 
     check_fits_suffix(Path(path))

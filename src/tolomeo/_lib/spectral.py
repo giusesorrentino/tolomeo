@@ -59,8 +59,7 @@ def _prepare_for_spectrum(
     Parameters
     ----------
     tod : :class:`~numpy.ndarray`
-        TOD of one detector.
-        Shape ``(n_samples,)``.
+        TOD of one detector. Shape ``(n_samples,)``.
     background : :class:`~numpy.ndarray` of bool, optional
         True for the good samples. None means all the samples are good.
         Shape ``(n_samples,)``.

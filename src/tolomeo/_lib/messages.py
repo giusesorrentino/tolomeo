@@ -33,7 +33,8 @@ def _warn(message: str, category: type[Warning] = UserWarning) -> None:
     message : str
         Text of the warning.
     category : type
-        Class of the warning. Default :class:`UserWarning`; :class:`RuntimeWarning` for
-        a problem met during a computation (for example a CG that does not converge).
+        Class of the warning. Defaults to :class:`UserWarning`; :class:`RuntimeWarning`
+        for a problem met during a computation (for example a CG that does not
+        converge).
     """
     warnings.warn(message, category, skip_file_prefixes=(_PACKAGE_DIR,))

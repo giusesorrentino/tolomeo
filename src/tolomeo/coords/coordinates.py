@@ -71,8 +71,7 @@ class Coordinates(BaseModel):
         Parameters
         ----------
         mask : :class:`~numpy.ndarray` of bool
-            True for the samples to keep.
-            Shape ``(n_samples,)``.
+            True for the samples to keep. Shape ``(n_samples,)``.
 
         Returns
         -------

@@ -49,7 +49,7 @@ class CommonMode(BaseStep):
         same value from every detector. ``"corr"`` gives every detector its own common
         mode, the mean of the other detectors weighted by their correlation with it,
         times a gain fitted on that detector; put it after the baseline.
-        Default ``"median"``.
+        Defaults to ``"median"``.
     """
 
     type: Literal["common_mode"] = "common_mode"
@@ -68,7 +68,7 @@ class Baseline(BaseStep):
     ----------
     deg : int
         Degree of the polynomial (1 is a straight line, 0 only the mean).
-        Default ``1``.
+        Defaults to ``1``.
     """
 
     type: Literal["baseline"] = "baseline"
@@ -89,8 +89,7 @@ class RemoveSpline(BaseStep):
         (modified Julian date); ``"30 s"`` or an :class:`~astropy.units.Quantity` is
         converted to days.
     order : int
-        Order (degree) of the spline, for example 3.
-        Default ``3``.
+        Order (degree) of the spline, for example 3. Defaults to ``3``.
     """
 
     type: Literal["remove_spline"] = "remove_spline"
@@ -108,7 +107,7 @@ class Window(BaseStep):
         Name of a function of :mod:`scipy.signal.windows` (for example ``"tukey"``).
     kwargs : dict
         Extra arguments of that function, after the window length (``n_samples``).
-        Default empty.
+        Defaults to ``{}``.
     """
 
     type: Literal["window"] = "window"
@@ -130,8 +129,7 @@ class Lowpass(BaseStep):
         Nyquist frequency of the TOD.
     order : int
         Order of the Butterworth filter. It is applied forward and backward (zero
-        phase), so the roll-off is twice as steep.
-        Default ``4``.
+        phase), so the roll-off is twice as steep. Defaults to ``4``.
     """
 
     type: Literal["lowpass"] = "lowpass"
@@ -153,8 +151,7 @@ class Highpass(BaseStep):
         Nyquist frequency of the TOD.
     order : int
         Order of the Butterworth filter. It is applied forward and backward (zero
-        phase), so the roll-off is twice as steep.
-        Default ``4``.
+        phase), so the roll-off is twice as steep. Defaults to ``4``.
     """
 
     type: Literal["highpass"] = "highpass"
@@ -177,8 +174,7 @@ class Bandpass(BaseStep):
         Upper edge of the band, same units as ``f_lower``; must be larger than
         ``f_lower``.
     order : int
-        Order of the Butterworth filter at each edge of the band.
-        Default ``4``.
+        Order of the Butterworth filter at each edge of the band. Defaults to ``4``.
     """
 
     type: Literal["bandpass"] = "bandpass"
@@ -253,12 +249,12 @@ class FilteringConfig(BaseModel):
     Attributes
     ----------
     steps : list of step
-        Default: ``[CommonMode(), Baseline()]``. The list replaces the default, it
+        Defaults to ``[CommonMode(), Baseline()]``. The list replaces the default, it
         does not extend it: to keep the common mode and the baseline, list them.
     mask : ``RadiusMask``, ``SigmaClipMask``, ``EdgeMask`` or None
         Leaves the source out of the fits of the steps that work subscan by subscan.
         The masks are in :mod:`~tolomeo.processing.masks`.
-        Default ``None``: every sample is used.
+        Defaults to ``None``: every sample is used.
 
     Examples
     --------

@@ -38,11 +38,9 @@ def _pointing_matrix(
     -------
     pixels : :class:`~numpy.ndarray` of uintp
         Flat pixel ``iy * nx + ix``. It is 0 where ``valid`` is False, so it only means
-        something together with ``valid``.
-        Shape ``(n_samples, n_det)``.
+        something together with ``valid``. Shape ``(n_samples, n_det)``.
     valid : :class:`~numpy.ndarray` of bool
-        True where the sample falls inside the map.
-        Shape ``(n_samples, n_det)``.
+        True where the sample falls inside the map. Shape ``(n_samples, n_det)``.
     """
     # centre of the map, which is also the tangent point of the projection (radians)
     ra0, dec0 = geometry.center

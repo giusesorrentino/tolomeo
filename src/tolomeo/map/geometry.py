@@ -23,12 +23,11 @@ class MapGeometry(BaseModel):
     Attributes
     ----------
     nx, ny : int
-        Number of pixels along x and y, both > 0.
-        Default ``256``.
+        Number of pixels along x and y, both > 0. Defaults to ``256``.
     pixel_size : float
         Side of a pixel, > 0. It is stored in arcsec: a number is in arcsec, and
         ``"0.1 arcmin"`` or ``0.1 * astropy.units.arcmin`` is converted to arcsec.
-        Default ``3.0``.
+        Defaults to ``3.0``.
     center : tuple of float
         ``(ra, dec)`` of the projection center. It is stored in radians: a number is
         in radians, and ``"83.6 deg"`` or an :class:`~astropy.units.Quantity` is
@@ -39,7 +38,7 @@ class MapGeometry(BaseModel):
         Orientation of the map. ``"radec"``: north up and east on the left.
         ``"azel"``: still centred on ``center`` (the source, in RA/Dec), but turned
         with the parallactic angle, so that the elevation is up and the azimuth grows
-        to the right. Default ``"radec"``.
+        to the right. Defaults to ``"radec"``.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -136,11 +135,9 @@ class MapGeometry(BaseModel):
         projection : :class:`~tolomeo._typing.Projection`
             Projection of the map.
         pixels_per_beam : float
-            The pixel size is ``beam_fwhm / pixels_per_beam``.
-            Default ``3.0``.
+            The pixel size is ``beam_fwhm / pixels_per_beam``. Defaults to ``3.0``.
         nx, ny : int
-            Number of pixels along x and y.
-            Default ``384``.
+            Number of pixels along x and y. Defaults to ``384``.
 
         Returns
         -------
@@ -185,18 +182,17 @@ class MapGeometry(BaseModel):
             Scan to cover.
         pixel_size : float, str or :class:`~astropy.units.Quantity`
             Side of a pixel. A number is in arcsec; a string with a unit
-            (``"4 arcsec"``) or a quantity is converted.
-            Default ``3.0``.
+            (``"4 arcsec"``) or a quantity is converted. Defaults to ``3.0``.
         projection : {"sin", "tan", "zea"}
-            Projection of the map. Default ``"sin"``.
+            Projection of the map. Defaults to ``"sin"``.
         frame : {"radec", "azel"}
-            Orientation of the map, see :class:`MapGeometry`. Default ``"radec"``.
+            Orientation of the map, see :class:`MapGeometry`. Defaults to ``"radec"``.
         center : tuple of float, optional
             Projection centre ``(ra, dec)``, in radians, for both frames. None means
             the source in the FITS headers, :attr:`~tolomeo.tod.Scan.source`.
         margin : float
             Fraction of the half-size of the map added on each side, from 0 to 1.
-            Default ``0.1``: ``nx`` and ``ny`` about 10% larger.
+            Defaults to ``0.1``: ``nx`` and ``ny`` about 10% larger.
 
         Returns
         -------
