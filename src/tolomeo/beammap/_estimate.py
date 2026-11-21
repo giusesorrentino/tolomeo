@@ -92,7 +92,8 @@ def reconstruct_focal_plane(
         relative to ``ref_channel``, and their errors from the fit; ``flags``, 0
         for a good channel, otherwise the sum of its
         :class:`~tolomeo.beammap.ChannelFlag`. Also ``ref_channel`` with its
-        offsets from the boresight, and ``min_snr`` as ``snr_threshold``.
+        offsets from the boresight, ``min_snr`` as ``snr_threshold``, the name of the
+        source and the time range of the scan.
 
     Raises
     ------
@@ -256,6 +257,8 @@ def reconstruct_focal_plane(
         ref_lat=float(ref_lat),
         ref_lon=float(ref_lon),
         snr_threshold=min_snr,
+        source_name=scan.coordinates.source_name,
+        time_range=(float(np.nanmin(scan.tod.time)), float(np.nanmax(scan.tod.time))),
     )
     if output is not None:
         write_beammap(beammap, output)

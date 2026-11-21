@@ -1,8 +1,10 @@
 import re
 from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import numpy as np
+from astropy.time import Time
 
 from ..beammap._beammap import BeamMap, ChannelFlag
 
@@ -17,6 +19,8 @@ _FMT = ["%2d", "%12.6f", "%12.6f", "%12.3e", "%12.3e", "%2d"]
 _REASONS = "otherwise the sum of the reasons below"
 _SNR = re.compile(r"LOW_SNR \(SNR < (\S+)\)")
 _REF = re.compile(r"chp(\d+) (az|el)_off \(deg\): (\S+)")
+_SOURCE = re.compile(r"^Source: (.+)$")
+_OBSERVED = re.compile(r"^Observed \(UTC\): (\S+) - (\S+)$")
 
 
 def read_beammap(path: str | Path) -> BeamMap:
@@ -35,8 +39,9 @@ def read_beammap(path: str | Path) -> BeamMap:
       :attr:`~tolomeo.beammap.ChannelFlag.UNKNOWN`, so that the reason stays
       unknown if the beammap is written again.
 
-    The offsets of the reference channel and the threshold of the signal-to-noise
-    ratio are read from the header when it has them, otherwise they are None.
+    The source and the time of the scan, the offsets of the reference channel and
+    the threshold of the signal-to-noise ratio are read from the header when it has
+    them, otherwise they are None.
 
     Parameters
     ----------
@@ -86,6 +91,14 @@ def read_beammap(path: str | Path) -> BeamMap:
             ref_channel = int(match.group(1))
             ref[match.group(2)] = float(np.deg2rad(float(match.group(3))))
 
+    source_name = time_range = None
+    for line in header:
+        if match := _SOURCE.match(line):
+            source_name = match.group(1).strip()
+        elif match := _OBSERVED.match(line):
+            mjd = Time(list(match.groups()), format="isot", scale="utc").mjd
+            time_range = (float(mjd[0]), float(mjd[1]))
+
     return BeamMap(
         channel_ids=channel_ids,
         flags=flags,
@@ -97,6 +110,8 @@ def read_beammap(path: str | Path) -> BeamMap:
         ref_lat=ref.get("el"),
         ref_lon=ref.get("az"),
         snr_threshold=snr_threshold,
+        source_name=source_name,
+        time_range=time_range,
     )
 
 
@@ -107,10 +122,11 @@ def write_beammap(beammap: BeamMap, path: str | Path) -> None:
     One row per channel: id, lon and lat offsets (deg), their errors (deg) in the
     two columns where the old files have the Tcal, and the flag: 0 for a good
     channel, otherwise the sum of its :class:`~tolomeo.beammap.ChannelFlag`, listed
-    in the header. The header also gives the date, the number of rows, the columns
-    and, when they are known, the offsets of the reference channel from the
-    boresight, subtracted from all the others. NaN (a failed fit) and unknown
-    errors are written as 0. :func:`read_beammap` reads the file back;
+    in the header. The header also gives the date, the number of rows, the version
+    of tolomeo, the columns and, when they are known, the source and the time of
+    the scan and the offsets of the reference channel from the boresight,
+    subtracted from all the others. NaN (a failed fit) and unknown errors are
+    written as 0. :func:`read_beammap` reads the file back;
     :func:`~tolomeo.io.read_scan` reads the columns 1, 2, 3 and 6 and keeps the
     channels with flag 0, as with the old files.
 
@@ -142,10 +158,23 @@ def write_beammap(beammap: BeamMap, path: str | Path) -> None:
             f"chp{channel} el_off (deg): {np.rad2deg(ref_lat):.12g}",
         ]
 
+    # what the scan was, when the beammap knows it, and who wrote the file
+    info_lines = []
+    if beammap.source_name is not None:
+        info_lines.append(f"Source: {beammap.source_name}")
+    if beammap.time_range is not None:
+        times = Time(beammap.time_range, format="mjd", scale="utc", precision=0)
+        info_lines.append(f"Observed (UTC): {times[0].isot} - {times[1].isot}")
+    try:
+        info_lines.append(f"Written by tolomeo {version('tolomeo')}")
+    except PackageNotFoundError:
+        pass
+
     header = "\n".join(
         [
             f"Feed list created: {datetime.now().astimezone():%b %d %H:%M:%S %Y}",
             f"nfeeds: {beammap.channel_ids.size}",
+            *info_lines,
             "Col.1: id",
             "Col.2: lon-offset (deg)",
             "Col.3: lat-offset (deg)",

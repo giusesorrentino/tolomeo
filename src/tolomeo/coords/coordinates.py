@@ -7,10 +7,10 @@ from pydantic import BaseModel, ConfigDict
 
 class Coordinates(BaseModel):
     """
-    Boresight coordinates of a scan, and the position of its source.
+    Boresight coordinates of a scan, and the name and position of its source.
 
     The class stores the celestial pointing of the telescope boresight
-    as a function of time, and where the source of the scan is.
+    as a function of time, and which source the scan observes and where it is.
 
     Attributes
     ----------
@@ -42,6 +42,10 @@ class Coordinates(BaseModel):
         next for a planet. None if it is not known (a scan built by hand).
         Shape: ``(n_samples,)``.
 
+    source_name : str or None
+        Name of the source, as written in the ``SOURCE`` keyword of the header of
+        the FITS subscans (for example ``"MARS"``). None if it is not known.
+
     Notes
     -----
     The boresight arrays ``ra``, ``dec`` and ``par_angle`` must contain
@@ -58,6 +62,7 @@ class Coordinates(BaseModel):
     el: NDArray[np.float64]
     source_ra: NDArray[np.float64] | None = None
     source_dec: NDArray[np.float64] | None = None
+    source_name: str | None = None
 
     def select(self, mask: NDArray[np.bool_]) -> Coordinates:
         """

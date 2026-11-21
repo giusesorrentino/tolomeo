@@ -30,8 +30,8 @@ class SubScan(NamedTuple):
     Arrays of one FITS subscan, as :func:`_read_subscan` returns them.
 
     All the arrays have ``n_samples`` rows; the angles are in radians.
-    ``source_ra`` and ``source_dec`` are the position of the source written in the
-    primary header of the subscan.
+    ``source_ra``, ``source_dec`` and ``source_name`` are the position and the name
+    of the source written in the primary header of the subscan (no name: None).
     """
 
     n_samples: int
@@ -45,6 +45,7 @@ class SubScan(NamedTuple):
     el: NDArray[np.float64]
     source_ra: float  # radians, J2000
     source_dec: float
+    source_name: str | None
 
 
 def read_scan(
@@ -73,8 +74,9 @@ def read_scan(
     Returns
     -------
     :class:`~tolomeo.tod.Scan`
-        TOD of the detectors, boresight coordinates, position of the source from
-        the headers of the subscans and detector offsets (all angles in radians).
+        TOD of the detectors, boresight coordinates, position and name of the
+        source from the headers of the subscans and detector offsets (all angles in
+        radians).
 
     Raises
     ------
@@ -149,6 +151,7 @@ def read_scan(
         source_dec=np.concatenate(
             [np.full(s.n_samples, s.source_dec) for s in subscans]
         ),
+        source_name=_source_name(subscans),
     )
     tod = TimeOrderedData(
         signal=np.concatenate([s.signal for s in subscans], axis=0),
@@ -216,6 +219,12 @@ def _good_channels(
     )
 
 
+def _source_name(subscans: list[SubScan]) -> str | None:
+    """Names of the sources in the headers, joined by commas; None if none."""
+    names = sorted({s.source_name for s in subscans if s.source_name})
+    return ", ".join(names) if names else None
+
+
 def _read_channel_ids(file: Path) -> NDArray[np.int64]:
     """
     Ids of all the detectors of a FITS subscan, sorted.
@@ -270,9 +279,9 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
     -------
     :class:`~tolomeo.io.scan.SubScan`
         ``signal`` of shape ``(n_samples, n_det)`` and the other arrays of shape
-        ``(n_samples,)``; ``source_ra`` and ``source_dec`` from the primary header.
-        ``ValueError`` if the two tables have different lengths, a detector column
-        is missing or the header has no position of the source.
+        ``(n_samples,)``; ``source_ra``, ``source_dec`` and ``source_name`` from the
+        primary header. ``ValueError`` if the two tables have different lengths, a
+        detector column is missing or the header has no position of the source.
     """
     with fits.open(file, memmap=False) as hdul:
         data_hdu = hdul["DATA TABLE"]
@@ -296,6 +305,7 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
             )
         source_ra = float(header["RightAscension"])
         source_dec = float(header["Declination"])
+        source_name = str(header.get("SOURCE", "")).strip() or None
 
         r = _read_angle(data_hdu, "raj2000")
         d = _read_angle(data_hdu, "decj2000")
@@ -326,6 +336,7 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
             el=el,
             source_ra=source_ra,
             source_dec=source_dec,
+            source_name=source_name,
         )
 
 

@@ -53,7 +53,8 @@ class BeamMap(BaseModel):
     every channel relative to a reference channel, fixed in the horizontal frame
     (on the plane of the projection: about :math:`\Delta\mathrm{az}\cos\mathrm{el}`
     and :math:`\Delta\mathrm{el}`). What a file may not say (the errors, the
-    reference channel, the threshold of the signal-to-noise ratio) is None.
+    reference channel, the threshold of the signal-to-noise ratio, the source and
+    the time of the scan) is None.
 
     Attributes
     ----------
@@ -84,6 +85,10 @@ class BeamMap(BaseModel):
     snr_threshold : float or None
         Signal-to-noise ratio below which a channel is flagged
         :attr:`ChannelFlag.LOW_SNR`. Default ``None``.
+    source_name : str or None
+        Name of the source of the scan, as in the FITS headers. Default ``None``.
+    time_range : tuple of float or None
+        Start and end of the scan, in MJD (UTC). Default ``None``.
 
     Raises
     ------
@@ -104,6 +109,8 @@ class BeamMap(BaseModel):
     ref_lat: float | None = None
     ref_lon: float | None = None
     snr_threshold: float | None = None
+    source_name: str | None = None
+    time_range: tuple[float, float] | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:
