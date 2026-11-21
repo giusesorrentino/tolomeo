@@ -37,6 +37,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 from scipy.signal import welch
 
+from .._lib.messages import _warn
 from .._lib.parallel import _resolve_workers
 from .._lib.spectral import _check_nyquist, _narrow_passband, _prepare_for_spectrum
 from .._signal.filters import gain
@@ -65,6 +66,16 @@ _MAX_DISCARDED = 0.1
 _MIN_COVERAGE = 0.5
 
 __all__ = ["estimate_inverse_noise"]
+
+
+class LeaveOneOutError(ValueError):
+    """
+    The leave-one-out cannot clean the TOD of a scan.
+
+    Raised when the scan has a single subscan, or when its two halves do not see the
+    same pixels: one scan, not two scans of the same field. The command line catches
+    it and estimates the spectra without a mask.
+    """
 
 
 class InverseNoise(BaseModel):
@@ -228,8 +239,8 @@ def estimate_inverse_noise(
         halves at the boundary of subscans nearest to its middle, and each half is
         cleaned with the binned map of the other one on ``geometry`` (see
         :func:`_leave_one_out_residual`). It needs ``geometry``, at least two scans of
-        the same field and a calibrated TOD, and excludes ``mask`` and ``background``.
-        Defaults to ``False``.
+        the same field and a calibrated TOD (a warning if ``scan.tod.unit`` is None),
+        and excludes ``mask`` and ``background``. Defaults to ``False``.
     workers : int, optional
         Maximum number of workers to use for parallel computation. If negative,
         the value wraps around from ``os.cpu_count()``.
@@ -245,6 +256,9 @@ def estimate_inverse_noise(
         with either of them or without ``geometry``, if a cutoff of ``filters`` is
         above the Nyquist frequency, if ``nperseg`` is odd, smaller than 2 or longer
         than the TOD, or if the TOD has NaN or inf.
+    LeaveOneOutError
+        If ``leave_one_out`` is True and the scan is not two scans of the same field
+        (see :func:`_leave_one_out_residual`). A subclass of ``ValueError``.
     NotImplementedError
         If ``cross_spectra`` is True.
     """
@@ -306,6 +320,12 @@ def estimate_inverse_noise(
     tod = scan.tod.signal
     if leave_one_out:
         tod, background = _leave_one_out_residual(scan, geometry, background, workers)
+        if scan.tod.unit is None:
+            _warn(
+                "The TOD is not calibrated: the leave-one-out puts all the detectors "
+                "in one map, and their different responsivities leave part of the "
+                "source in the spectra. Calibrate the scan first."
+            )
 
     inv_noiseps = _inverse_spectra(tod, sample_rate, nperseg, background, workers)
     freqs = np.fft.rfftfreq(nperseg, d=1 / sample_rate)
@@ -636,7 +656,7 @@ def _leave_one_out_residual(
 
     Raises
     ------
-    ValueError
+    LeaveOneOutError
         If the scan has a single subscan, or if fewer than ``_MIN_COVERAGE`` of the
         good samples fall in pixels that the other half sees: the two halves are not
         two scans of the same field.
@@ -650,7 +670,7 @@ def _leave_one_out_residual(
     segments = scan.tod.segments
     half = int(segments[np.argmin(np.abs(segments - n_samples / 2))])
     if half in (0, n_samples):
-        raise ValueError(
+        raise LeaveOneOutError(
             "The scan has a single subscan: the leave-one-out needs at least two "
             "scans of the same field."
         )
@@ -689,7 +709,7 @@ def _leave_one_out_residual(
         "pixels seen by the other half"
     )
     if coverage < _MIN_COVERAGE:
-        raise ValueError(
+        raise LeaveOneOutError(
             f"Only {coverage:.0%} of the good samples fall in pixels seen by the other "
             "half: the leave-one-out needs at least two scans of the same field."
         )

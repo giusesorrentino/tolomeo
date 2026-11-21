@@ -7,9 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.time import Time
 
+from .._lib.messages import _warn
 from ..io import read_skydip, write_map
 from ..map import MapGeometry, MapResult
 from ..mapmaking import InverseNoise, estimate_inverse_noise, gls_map
+from ..mapmaking._noise import LeaveOneOutError
 from ..plotting import plot_map
 from ..processing import calibrate, process_tod, skydip_responsivity
 from ..tod import Scan
@@ -170,24 +172,32 @@ class RunMapmaker:
         its arguments (same names; ``nperseg`` None is the automatic choice). Without
         ``noise.mask`` the mask of ``config.filtering`` is used, so that the source
         stays out of the spectra, unless ``noise.leave_one_out`` removes it without a
-        mask. The threads are ``config.gls.workers``.
+        mask. When the leave-one-out cannot be done (a single scan), a warning says so
+        and the spectra are estimated on all the good samples, without a mask. The
+        threads are ``config.gls.workers``.
         """
         noise = self.config.noise
         if noise.leave_one_out:
             mask = None  # NoiseConfig refuses noise.mask with the leave-one-out
         else:
             mask = noise.mask if noise.mask is not None else self.config.filtering.mask
-        return estimate_inverse_noise(
-            scan=scan,
-            nperseg=noise.nperseg,
-            filters=noise.filters,
-            mask=mask,
-            geometry=self.config.geometry,
-            background=None,
-            cross_spectra=False,
-            leave_one_out=noise.leave_one_out,
-            workers=self.config.gls.workers,
-        )
+        arguments = {
+            "nperseg": noise.nperseg,
+            "filters": noise.filters,
+            "geometry": self.config.geometry,
+            "background": None,
+            "cross_spectra": False,
+            "workers": self.config.gls.workers,
+        }
+        try:
+            return estimate_inverse_noise(
+                scan, mask=mask, leave_one_out=noise.leave_one_out, **arguments
+            )
+        except LeaveOneOutError as error:
+            _warn(f"{error} The noise spectra are estimated without a mask.")
+            return estimate_inverse_noise(
+                scan, mask=None, leave_one_out=False, **arguments
+            )
 
     def _make_map(
         self, scan: Scan, geometry: MapGeometry, inv_noise: InverseNoise

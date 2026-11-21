@@ -40,8 +40,10 @@ Example::
 
     noise:                           # arguments of estimate_inverse_noise
       nperseg: 8192                  # samples per block (even); optional, default: auto
-      leave_one_out: false           # optional; true: the source out without a mask
-      mask:                          # optional; default: the mask of filtering
+      leave_one_out: false           # optional, default true: the source out without a
+                                     #   mask; false to use the mask below
+      mask:                          # optional, with leave_one_out false; default: the
+                                     #   mask of filtering
         type: radius
         radius: 3.5                  # arcmin
       filters:                       # optional: filters of the inverse spectra, not of the TOD
@@ -131,7 +133,8 @@ class NoiseConfig(BaseModel):
     ``leave_one_out`` removes the source from the TOD of the spectra with the binned
     map of the other half of the scans, instead of a mask (see
     ``estimate_inverse_noise``). It excludes ``mask``, and the mask of ``filtering``
-    is not used either. Defaults to ``true``.
+    is not used either. With a single scan it cannot be done: a warning says so and
+    the spectra are estimated without a mask. Defaults to ``true``.
     """
 
     model_config = ConfigDict(extra="forbid")
