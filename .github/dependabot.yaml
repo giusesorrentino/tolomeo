@@ -34,3 +34,7 @@ updates:
       prefix: "chore"
     labels:
       - "maintenance"
+    groups:
+      pre-commit:
+        patterns:
+          - "*"
