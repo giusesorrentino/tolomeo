@@ -39,7 +39,7 @@ Example::
         - type: common_mode
 
     noise:                           # arguments of estimate_inverse_noise
-      nperseg: 8192                  # samples per block (even), or auto
+      nperseg: 8192                  # samples per block (even); optional, default: auto
       mask:                          # optional; default: the mask of filtering
         type: radius
         radius: 3.5                  # arcmin
@@ -119,6 +119,7 @@ class NoiseConfig(BaseModel):
 
     ``nperseg`` is the number of samples in one block (even), or ``auto`` to choose it
     from the segments of the TOD, the runs of good samples with no gap in time.
+    Defaults to ``auto``.
 
     ``filters`` are applied to the inverse noise spectra, not to the TOD: the same
     ``lowpass``, ``highpass`` and ``bandpass`` steps as in ``filtering``, with the same
@@ -129,7 +130,7 @@ class NoiseConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    nperseg: int | None = Field(default=8192, ge=2)  # None: chosen automatically
+    nperseg: int | None = Field(default=None, ge=2)  # None: chosen automatically
     filters: list[FrequencyFilter] = Field(default_factory=list)
     mask: Mask | None = None
 

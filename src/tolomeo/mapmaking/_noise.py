@@ -177,7 +177,7 @@ class InverseNoise(BaseModel):
 def estimate_inverse_noise(
     scan: Scan,
     *,
-    nperseg: int | None = 8192,
+    nperseg: int | None = None,
     filters: Sequence[FrequencyFilter] = (),
     mask: Mask | None = None,
     geometry: MapGeometry | None = None,

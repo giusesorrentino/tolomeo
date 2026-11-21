@@ -30,7 +30,7 @@ from tolomeo.processing.masks import RadiusMask
 def test_noise_config_defaults():
     config = NoiseConfig()
 
-    assert config.nperseg == 8192
+    assert config.nperseg is None  # auto
     assert config.filters == []
     assert config.mask is None
 
