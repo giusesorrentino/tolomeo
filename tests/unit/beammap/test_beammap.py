@@ -30,6 +30,8 @@ def test_beammap_what_is_not_known_is_none():
         "ref_lat",
         "ref_lon",
         "snr_threshold",
+        "source_name",
+        "time_range",
     ]:
         assert getattr(beammap, name) is None
 

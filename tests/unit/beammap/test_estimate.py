@@ -5,6 +5,7 @@ from tests.common import (
     ARCSEC,
     OFFSETS_LAT,
     OFFSETS_LON,
+    SOURCE_NAME,
     gaussian_source,
     make_scan,
     with_signal,
@@ -42,8 +43,11 @@ def _beammap_scan(lon=OFFSETS_LON, lat=OFFSETS_LAT, gains=(-1.0, -1.0, -1.0, -1.
 
 
 def test_reconstruct_focal_plane_recovers_the_offsets():
-    # Check the offsets relative to the reference, their errors, and the reference.
-    beammap = reconstruct_focal_plane(_beammap_scan(), REF, **OPTIONS)
+    # Check the offsets relative to the reference, their errors, the reference, and
+    # what the scan was.
+    scan = _beammap_scan()
+
+    beammap = reconstruct_focal_plane(scan, REF, **OPTIONS)
 
     np.testing.assert_array_equal(beammap.flags, 0)
     np.testing.assert_allclose(beammap.lon, OFFSETS_LON, atol=0.5 * ARCSEC)
@@ -54,6 +58,8 @@ def test_reconstruct_focal_plane_recovers_the_offsets():
     assert abs(beammap.ref_lon) < 0.5 * ARCSEC  # the reference is at the boresight
     assert abs(beammap.ref_lat) < 0.5 * ARCSEC
     assert beammap.snr_threshold == 10
+    assert beammap.source_name == SOURCE_NAME
+    assert beammap.time_range == (scan.tod.time.min(), scan.tod.time.max())
 
 
 def test_reconstruct_focal_plane_sign_of_every_channel():

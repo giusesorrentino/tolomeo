@@ -1,3 +1,5 @@
+from importlib.metadata import PackageNotFoundError
+
 import numpy as np
 import pytest
 
@@ -40,6 +42,8 @@ def _beammap():
         ref_lat=-5.3 * ARCSEC,
         ref_lon=1.0 * ARCSEC,
         snr_threshold=10.0,
+        source_name="MARS",
+        time_range=(60724.9336, 60724.9636),
     )
 
 
@@ -70,10 +74,14 @@ def test_write_and_read_beammap_round_trip(tmp_path):
     assert read.ref_lat == pytest.approx(beammap.ref_lat, rel=1e-11)
     assert read.ref_lon == pytest.approx(beammap.ref_lon, rel=1e-11)
     assert read.snr_threshold == beammap.snr_threshold
+    assert read.source_name == beammap.source_name
+    # written to the second
+    assert read.time_range == pytest.approx(beammap.time_range, abs=1 / 86400)
 
 
 def test_write_beammap_header(tmp_path):
-    # Check that the header lists every reason, with the threshold of LOW_SNR.
+    # Check that the header lists every reason, with the threshold of LOW_SNR, and
+    # the source and the time of the scan.
     path = tmp_path / "beammap.dat"
 
     write_beammap(_beammap(), path)
@@ -83,6 +91,30 @@ def test_write_beammap_header(tmp_path):
         assert any(f"{flag.value} {flag.name}" in line for line in header)
     assert any("LOW_SNR (SNR < 10)" in line for line in header)
     assert any(line.startswith("# chp12 az_off (deg)") for line in header)
+    assert "# Source: MARS" in header
+    assert "# Observed (UTC): 2025-02-18T22:24:23 - 2025-02-18T23:07:35" in header
+
+
+def test_write_beammap_version_of_tolomeo(tmp_path, monkeypatch):
+    monkeypatch.setattr("tolomeo.io.beammap.version", lambda name: "9.9.9")
+    path = tmp_path / "beammap.dat"
+
+    write_beammap(_beammap(), path)
+
+    assert "# Written by tolomeo 9.9.9" in path.read_text().splitlines()
+
+
+def test_write_beammap_without_version_of_tolomeo(tmp_path, monkeypatch):
+    # Check that a tolomeo that is not installed only leaves out the line.
+    def not_installed(name):
+        raise PackageNotFoundError(name)
+
+    monkeypatch.setattr("tolomeo.io.beammap.version", not_installed)
+    path = tmp_path / "beammap.dat"
+
+    write_beammap(_beammap(), path)
+
+    assert "Written by tolomeo" not in path.read_text()
 
 
 def test_write_beammap_without_errors_and_reference(tmp_path):
@@ -114,6 +146,8 @@ def test_read_beammap_old_file(tmp_path):
     assert read.lat_error is None
     assert read.lon_error is None
     assert read.snr_threshold is None
+    assert read.source_name is None
+    assert read.time_range is None
     assert read.ref_channel == 8
     assert read.ref_lon == pytest.approx(np.deg2rad(1.722222222e-05), rel=1e-12)
     assert read.ref_lat == pytest.approx(np.deg2rad(-0.0003638888889), rel=1e-12)

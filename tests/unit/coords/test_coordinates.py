@@ -31,13 +31,18 @@ def test_select_keeps_the_masked_samples():
 
 def test_select_keeps_the_position_of_the_source():
     coords = _coordinates([1.0, 2.0, 3.0], [5.0, 6.0, 7.0]).model_copy(
-        update={"source_ra": np.array([0.1, 0.2, 0.3]), "source_dec": np.ones(3)}
+        update={
+            "source_ra": np.array([0.1, 0.2, 0.3]),
+            "source_dec": np.ones(3),
+            "source_name": "MARS",
+        }
     )
 
     selected = coords.select(np.array([True, False, True]))
 
     np.testing.assert_array_equal(selected.source_ra, [0.1, 0.3])
     np.testing.assert_array_equal(selected.source_dec, [1.0, 1.0])
+    assert selected.source_name == "MARS"
 
 
 def test_select_without_the_position_of_the_source():
@@ -45,6 +50,7 @@ def test_select_without_the_position_of_the_source():
 
     assert selected.source_ra is None
     assert selected.source_dec is None
+    assert selected.source_name is None
 
 
 def test_select_does_not_modify_the_original():

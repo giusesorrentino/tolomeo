@@ -7,6 +7,7 @@ from tests.common import (
     DETECTOR_IDS,
     OFFSETS_LAT,
     OFFSETS_LON,
+    SOURCE_NAME,
     make_scan,
     write_beammap,
     write_scan_dir,
@@ -192,6 +193,26 @@ def test_read_scan_source_from_the_header_of_every_subscan(tmp_path):
     np.testing.assert_allclose(
         read.coordinates.source_dec, scan.coordinates.source_dec, rtol=1e-15
     )
+
+
+def test_read_scan_source_name_from_the_header(tmp_path):
+    tod_dir, beammap = write_scan_dir(tmp_path, _scan())
+
+    read = read_scan(tod_dir, beammap)
+
+    assert read.coordinates.source_name == SOURCE_NAME
+
+
+def test_read_scan_header_without_source_name(tmp_path):
+    # Check that a missing SOURCE keyword is not an error: the name is unknown.
+    scan = _scan()
+    coords = scan.coordinates.model_copy(update={"source_name": None})
+    scan = scan.model_copy(update={"coordinates": coords})
+    tod_dir, beammap = write_scan_dir(tmp_path, scan)
+
+    read = read_scan(tod_dir, beammap)
+
+    assert read.coordinates.source_name is None
 
 
 def test_read_scan_header_without_source_raises(tmp_path):

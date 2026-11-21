@@ -18,6 +18,7 @@ MJD_START = 60600.0  # modified Julian date of the first sample
 # centre of the synthetic field (radians), near 3C84
 RA0 = np.deg2rad(52.0)
 DEC0 = np.deg2rad(41.5)
+SOURCE_NAME = "FAKE"  # the SOURCE keyword of the headers
 
 # detectors: beammap ids and offsets from the boresight (radians)
 DETECTOR_IDS = [3, 7, 12, 20]
@@ -130,6 +131,7 @@ def make_scan(
         el=np.full(n_samples, 0.8),
         source_ra=np.full(n_samples, RA0),
         source_dec=np.full(n_samples, DEC0),
+        source_name=SOURCE_NAME,
     )
     tod = TimeOrderedData(
         signal=noise_rms * rng.standard_normal((n_samples, n_det)),
@@ -196,6 +198,8 @@ def write_subscan(path, scan, start, stop, angle_unit="rad"):
     if coords.source_ra is not None:
         primary.header["HIERARCH RightAscension"] = float(coords.source_ra[start])
         primary.header["HIERARCH Declination"] = float(coords.source_dec[start])
+    if coords.source_name is not None:
+        primary.header["SOURCE"] = coords.source_name
     fits.HDUList([primary, data_table, ph_table]).writeto(path)
 
 
