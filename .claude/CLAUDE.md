@@ -86,7 +86,7 @@ pixel, for checks. The command line runs the same chain in `_cli/runner.py`. Not
 - The large scales converge slowest in the CG: raise `maxiter` before suspecting a bug.
 - A sky that changes inside a pixel adds a pixelization error that the GLS does not remove, larger with non-flat
   weights: keep the pixel well below the beam.
-- Open question, not an established cause: the zero weight at `f = 0` (`_inverse_with_floor`, `_marginalize`) can
+- Open question, not an established cause: the zero weight at `f = 0` (`_inverse_spectra`, `_shape_inverse`) can
   stall the CG on faint fields. The numbers are in the skill `diagnose-mapmaking`.
 
 ## Tools in this folder

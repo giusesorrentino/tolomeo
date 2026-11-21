@@ -217,9 +217,9 @@ def estimate_inverse_noise(
     geometry : :class:`~tolomeo.map.MapGeometry`, optional
         Needed by a ``RadiusMask`` and by ``leave_one_out``.
     background : :class:`~numpy.ndarray` of bool, optional
-        ``True`` for the samples used to estimate the spectra (far from the source).
-        None, and no ``mask``, means ``scan.tod.flags``. Shape ``(n_samples,)`` or
-        ``(n_samples, n_det)``.
+        ``True`` for the samples used to estimate the spectra (far from the source),
+        used as it is. None, and no ``mask``, means ``scan.tod.flags``. Shape
+        ``(n_samples,)`` or ``(n_samples, n_det)``.
     cross_spectra : bool
         Also estimate the cross spectra of the detector pairs. Not implemented yet:
         True raises ``NotImplementedError``. Defaults to ``False``.
@@ -237,11 +237,26 @@ def estimate_inverse_noise(
     Returns
     -------
     :class:`InverseNoise`
+
+    Raises
+    ------
+    ValueError
+        If ``mask`` and ``background`` are both given, if ``leave_one_out`` is given
+        with either of them or without ``geometry``, if a cutoff of ``filters`` is
+        above the Nyquist frequency, if ``nperseg`` is odd, smaller than 2 or longer
+        than the TOD, or if the TOD has NaN or inf.
+    NotImplementedError
+        If ``cross_spectra`` is True.
     """
     sample_rate = scan.tod.sample_rate
     n_det = scan.tod.signal.shape[1]
     workers = _resolve_workers(workers)
 
+    # the arguments are checked here, before the slow estimate
+    if cross_spectra:
+        raise NotImplementedError("The cross-spectra are not implemented yet.")
+    if mask is not None and background is not None:
+        raise ValueError("Give either `background` or `mask`, not both.")
     if leave_one_out and (mask is not None or background is not None):
         raise ValueError(
             "`leave_one_out` removes the source without a mask: do not give `mask` "
@@ -253,79 +268,9 @@ def estimate_inverse_noise(
             "on that grid."
         )
 
-    # the cutoffs of the filters are checked here, before the slow estimate
-    passband = _noise_passband(scan.tod.passband, filters, sample_rate)
-    background = _noise_background(scan, mask, geometry, background)
-
-    # automatic block length: from the segments of the TOD, the runs of good samples
-    # with no gap in time. The estimate below still uses the whole TOD
-    if nperseg is None:
-        segments = _find_segments(scan.tod.time, scan.tod.flags, sample_rate)
-        nperseg = _auto_nperseg(segments)
-
-    # the filter of gls_map needs blocks of an even number of samples
-    if nperseg < 2 or nperseg % 2:
-        raise ValueError(f"`nperseg` must be even and at least 2, got {nperseg}.")
-
-    # the TOD of the estimate: the scan itself, or the scan without the source
-    tod = scan.tod.signal
-    if leave_one_out:
-        tod, background = _leave_one_out_residual(scan, geometry, background, workers)
-
-    inv_noiseps, det_pairs = _build_noise_model(
-        tod,
-        sample_rate,
-        nperseg=nperseg,
-        background=background,
-        cross_spectra=cross_spectra,
-        workers=workers,
-    )
-    freqs = np.fft.rfftfreq(nperseg, d=1 / sample_rate)
-
-    # the filters first: the level of the marginalization is relative to the maximum
-    # of the weights that are really used
-    inv_noiseps = _filter_inverse(inv_noiseps, freqs, filters, sample_rate)
-    inv_noiseps = _marginalize(inv_noiseps, freqs, passband)
-
-    # after the filters and the marginalization, so that the preconditioner sees the
-    # same weights as N^-1
-    lag_zero = inv_noiseps[:, :n_det].sum(axis=0) / nperseg
-
-    return InverseNoise(
-        inv_noiseps=inv_noiseps,
-        det_pairs=det_pairs,
-        lag_zero=lag_zero,
-        sample_rate=sample_rate,
-        channel_ids=scan.channel_ids,
-        passband=passband,
-        filters=tuple(filters),
-    )
-
-
-def _noise_passband(
-    passband: tuple[float, float] | None,
-    filters: Sequence[FrequencyFilter],
-    sample_rate: float,
-) -> tuple[float, float] | None:
-    """
-    Band of the marginalization: ``passband`` narrowed by every filter of ``filters``.
-
-    Parameters
-    ----------
-    passband : 2-tuple of float or None
-        Band of the filters already applied to the TOD (``scan.tod.passband``), in Hz.
-        None if there is none.
-    filters : sequence of :data:`~tolomeo.processing.FrequencyFilter`
-        Filters of the inverse spectra. Every cutoff is checked against the Nyquist
-        frequency.
-    sample_rate : float
-        Sampling frequency in Hz.
-
-    Returns
-    -------
-    2-tuple of float or None
-        The narrowed band in Hz, None if there is no filter at all.
-    """
+    # band of the marginalization: the passband of the TOD, narrowed by every filter,
+    # whose cutoffs must be below the Nyquist frequency
+    passband = scan.tod.passband
     for filt in filters:
         match filt:
             case Lowpass():
@@ -338,71 +283,63 @@ def _noise_passband(
                 _check_nyquist(sample_rate, filt.f_lower, filt.f_upper)
                 passband = _narrow_passband(passband, filt.f_lower, filt.f_upper)
 
-    return passband
-
-
-def _noise_background(
-    scan: Scan,
-    mask: Mask | None,
-    geometry: MapGeometry | None,
-    background: NDArray[np.bool_] | None,
-) -> NDArray[np.bool_]:
-    """
-    Samples used to estimate the spectra: True far from the source and not flagged.
-
-    Parameters
-    ----------
-    scan : :class:`~tolomeo.tod.Scan`
-        The scan of the estimate.
-    mask : ``RadiusMask``, ``SigmaClipMask`` or ``EdgeMask``, optional
-        Samples to leave out (for example the source). The flagged samples are left
-        out too.
-    geometry : :class:`~tolomeo.map.MapGeometry`, optional
-        Needed only by a ``RadiusMask``.
-    background : :class:`~numpy.ndarray` of bool, optional
-        Given directly instead of ``mask``, and used as it is.
-
-    Returns
-    -------
-    :class:`~numpy.ndarray` of bool
-        ``background`` if given, otherwise the mask combined with
-        ``scan.tod.flags``, otherwise ``scan.tod.flags`` alone.
-        Shape ``(n_samples,)`` or ``(n_samples, n_det)``, depending on the mask.
-
-    Raises
-    ------
-    ValueError
-        If both ``mask`` and ``background`` are given.
-    """
-    if mask is not None and background is not None:
-        raise ValueError("Give either `background` or `mask`, not both.")
-
+    # samples of the estimate: the mask combined with the flags, the given background
+    # as it is, or the flags alone. Shape (n_samples,) or (n_samples, n_det)
+    flags = scan.tod.flags
     if mask is not None:
-        # (n_samples,) or (n_samples, n_det), depending on the mask
         args = (scan, geometry) if isinstance(mask, RadiusMask) else (scan,)
         background = mask.build(*args)
+        background = background & (flags if background.ndim == 1 else flags[:, None])
+    elif background is None:
+        background = flags
 
-        flags = scan.tod.flags if background.ndim == 1 else scan.tod.flags[:, None]
-        return background & flags
+    # automatic block length, from the runs of good samples with no gap in time. The
+    # estimate below still uses the whole TOD
+    if nperseg is None:
+        nperseg = _auto_nperseg(scan.tod.time, flags, sample_rate)
 
-    if background is None:
-        return scan.tod.flags
+    # the filter of gls_map needs blocks of an even number of samples
+    if nperseg < 2 or nperseg % 2:
+        raise ValueError(f"`nperseg` must be even and at least 2, got {nperseg}.")
 
-    return background
+    # the TOD of the estimate: the scan itself, or the scan without the source
+    tod = scan.tod.signal
+    if leave_one_out:
+        tod, background = _leave_one_out_residual(scan, geometry, background, workers)
+
+    inv_noiseps = _inverse_spectra(tod, sample_rate, nperseg, background, workers)
+    freqs = np.fft.rfftfreq(nperseg, d=1 / sample_rate)
+    inv_noiseps = _shape_inverse(inv_noiseps, freqs, filters, passband, sample_rate)
+
+    # after the filters and the marginalization, so that the preconditioner sees the
+    # same weights as N^-1
+    lag_zero = inv_noiseps[:, :n_det].sum(axis=0) / nperseg
+
+    return InverseNoise(
+        inv_noiseps=inv_noiseps,
+        # column j is the auto-spectrum of detector j
+        det_pairs=np.array([(j, j) for j in range(n_det)], dtype=np.uintp),
+        lag_zero=lag_zero,
+        sample_rate=sample_rate,
+        channel_ids=scan.channel_ids,
+        passband=passband,
+        filters=tuple(filters),
+    )
 
 
-def _find_segments(
+def _auto_nperseg(
     time: NDArray[np.float64],
     ok: NDArray[np.bool_],
     sample_rate: float,
-) -> NDArray[np.intp]:
-    """
-    Intervals of the TOD where the good samples are contiguous in time.
+) -> int:
+    r"""
+    Block length chosen from the segments of the TOD.
 
     Welch's method assumes that the samples of a block are taken every
     ``1 / sample_rate``. A segment is a run of good samples with no flagged sample
-    and no gap in time inside it. Used to choose the block length, see
-    :func:`_auto_nperseg`.
+    and no gap in time inside it, and a block of ``nperseg`` samples fits in a segment
+    only if the segment is at least that long; otherwise it crosses a flagged sample
+    or a gap in time.
 
     Parameters
     ----------
@@ -415,10 +352,8 @@ def _find_segments(
 
     Returns
     -------
-    :class:`~numpy.ndarray` of intp
-        One row per segment: the index of its first sample and the index after its
-        last sample, so that segment ``k`` of a detector is ``x[start:stop]``. The
-        indices refer to the full TOD, not to ``time[ok]``. Shape ``(n_segments, 2)``.
+    int
+        ``nperseg``, a power of two.
 
     Raises
     ------
@@ -431,6 +366,24 @@ def _find_segments(
     contiguous, and at least ``2 / sample_rate`` apart when a flagged sample or a gap
     in time lies between them. The threshold ``1.5 / sample_rate`` separates the two
     cases and tolerates a small jitter of the time stamps.
+
+    ``nperseg`` sets the frequency resolution, ``sample_rate / nperseg``, which is the
+    lowest frequency above zero in the spectra, and the longest time over which the
+    filter of ``gls_map`` models the noise correlations. A longer block is therefore
+    better, as long as most of the samples are in segments that can hold it.
+
+    The rule is: the longest power of two such that the segments shorter than it
+    hold at most a fraction :math:`\epsilon` (``_MAX_DISCARDED``) of the good samples.
+    With :math:`\ell_k` the lengths of the segments,
+
+    .. math::
+
+        n_{\rm perseg} = \max \left\{ 2^n \;:\;
+        \frac{\sum_{\ell_k < 2^n} \ell_k}{\sum_k \ell_k} \le \epsilon \right\}.
+
+    Powers of two keep the FFTs fast. The value of :math:`\epsilon` is a choice, not
+    a result from the literature. The segments only choose the length: the spectra
+    are still estimated on the whole TOD.
     """
     # with no good sample there is no segment, and ok_idx[0] below would fail
     if not ok.any():
@@ -448,62 +401,13 @@ def _find_segments(
     # where dt is longer than one sample, the good sample p + 1 starts a new segment
     after_jump = np.flatnonzero(dt > 1.5 / sample_rate) + 1
 
-    # start of every segment but the first: the first good sample after a jump,
-    # read in ok_idx to get its index in the TOD
-    starts = ok_idx[after_jump]
+    # start of every segment (the first good sample, then the first one after every
+    # jump) and its stop, one after its last good sample as in a slice
+    starts = np.insert(ok_idx[after_jump], 0, ok_idx[0])
+    stops = np.append(ok_idx[after_jump - 1] + 1, ok_idx[-1] + 1)
 
-    # stop of every segment but the last: the last good sample before a jump, plus
-    # one because the stop is excluded, as in a slice
-    stops = ok_idx[after_jump - 1] + 1
-
-    # no jump marks the edges: the first segment starts at the first good sample and
-    # the last one stops after the last good sample
-    starts = np.insert(starts, 0, ok_idx[0])
-    stops = np.append(stops, ok_idx[-1] + 1)
-
-    # one row per segment: (start, stop)
-    return np.column_stack((starts, stops))
-
-
-def _auto_nperseg(segments: NDArray[np.integer]) -> int:
-    r"""
-    Block length chosen from the lengths of the segments of the TOD.
-
-    Parameters
-    ----------
-    segments : :class:`~numpy.ndarray` of int
-        Start and stop of every segment, as returned by :func:`_find_segments`.
-        Shape ``(n_segments, 2)``.
-
-    Returns
-    -------
-    int
-        ``nperseg``, a power of two.
-
-    Notes
-    -----
-    A block of ``nperseg`` samples fits in a segment only if the segment is at least
-    that long; otherwise it crosses a flagged sample or a gap in time. ``nperseg``
-    also sets the frequency resolution, ``sample_rate / nperseg``, which is the lowest
-    frequency above zero in the spectra, and the longest time over which the filter
-    of ``gls_map`` models the noise correlations. A longer block is therefore better,
-    as long as most of the samples are in segments that can hold it.
-
-    The rule is: the longest power of two such that the segments shorter than it
-    hold at most a fraction :math:`\epsilon` (``_MAX_DISCARDED``) of the good samples.
-    With :math:`\ell_k` the lengths of the segments,
-
-    .. math::
-
-        n_{\rm perseg} = \max \left\{ 2^n \;:\;
-        \frac{\sum_{\ell_k < 2^n} \ell_k}{\sum_k \ell_k} \le \epsilon \right\}.
-
-    Powers of two keep the FFTs fast. The value of :math:`\epsilon` is a choice, not
-    a result from the literature. The segments only choose the length: the spectra
-    are still estimated on the whole TOD.
-    """
     # length of every segment, in samples
-    lengths = segments[:, 1] - segments[:, 0]
+    lengths = stops - starts
     total = lengths.sum()
 
     # start from the longest power of two that fits in the longest segment: a longer
@@ -523,16 +427,24 @@ def _auto_nperseg(segments: NDArray[np.integer]) -> int:
     return nperseg
 
 
-def _build_noise_model(
+def _inverse_spectra(
     tod: NDArray[np.float64],
     sample_rate: float,
-    nperseg: int = 8192,
+    nperseg: int,
     background: NDArray[np.bool_] | None = None,
-    cross_spectra: bool = False,
     workers: int = 1,  # TODO: a global setting in the config, not in every signature
-) -> tuple[NDArray[np.float64], NDArray[np.uintp]]:
+) -> NDArray[np.float64]:
     """
-    Inverse noise spectra of all the detectors, in the form the kernel expects.
+    Inverse noise spectrum of every detector, with Welch's method on its whole TOD.
+
+    For every detector, in parallel: the samples outside ``background`` (on the source
+    or flagged) are replaced by a linear interpolation of the good ones, and the mean
+    of the good samples is removed
+    (:func:`~tolomeo._lib.spectral._prepare_for_spectrum`); then Welch's method with
+    Hann blocks of ``nperseg`` samples, and the inverse. The inverse has a floor,
+    ``_FLOOR_FACTOR`` times the median of the spectrum: without it a bin with almost
+    no power would get an enormous weight. Bin 0 is set to zero: the offset of the
+    TOD gets no weight.
 
     Only the estimate: the filters, the marginalization and ``lag_zero`` are added by
     :func:`estimate_inverse_noise`.
@@ -545,25 +457,25 @@ def _build_noise_model(
     sample_rate : float
         Sampling frequency in Hz.
     nperseg : int
-        Samples in one Welch block, as in the filter blocks of the kernel. Every
-        spectrum has ``n_freqs = nperseg // 2 + 1`` bins. Defaults to ``8192``.
+        Samples in one Welch block, as in the filter blocks of the kernel.
     background : :class:`~numpy.ndarray` of bool, optional
-        True for the samples far from the source: one column per detector, or one
-        array for all of them. Shape ``(n_samples, n_det)`` or ``(n_samples,)``.
-    cross_spectra : bool
-        Add one cross-spectrum for every pair of detectors. Not implemented yet: True
-        raises ``NotImplementedError``. Defaults to ``False``.
+        True for the samples used: one column per detector, or one array for all of
+        them. Shape ``(n_samples, n_det)`` or ``(n_samples,)``. Defaults to ``None``,
+        all the samples.
     workers : int
         Threads: the detectors are estimated in parallel. Defaults to ``1``.
 
     Returns
     -------
-    inv_noiseps : :class:`~numpy.ndarray`
-        One inverse spectrum per column, the auto-spectra of the detectors in order.
-        Shape ``(n_freqs, n_det)``.
-    det_pairs : :class:`~numpy.ndarray` of uintp
-        Row ``j`` is ``(j, j)``: column ``j`` of ``inv_noiseps`` is the auto-spectrum
-        of detector ``j``. Shape ``(n_det, 2)``.
+    :class:`~numpy.ndarray` of float64
+        One inverse spectrum per column, the detectors in order, zero at ``f = 0``.
+        Shape ``(nperseg // 2 + 1, n_det)``.
+
+    Raises
+    ------
+    ValueError
+        If ``tod`` is not 2D, if it has NaN or inf, or if it is shorter than
+        ``nperseg``.
     """
     # refuse inputs that the estimate cannot work on, before the slow part
     if tod.ndim != 2:
@@ -574,9 +486,6 @@ def _build_noise_model(
             "`tod` contains NaN or inf: the FFT of the kernel does not accept them."
         )
 
-    if cross_spectra:
-        raise NotImplementedError("The cross-spectra are not implemented yet.")
-
     n_samples, n_det = tod.shape
 
     # at least one Welch block must fit in the TOD
@@ -584,8 +493,6 @@ def _build_noise_model(
         raise ValueError(
             f"The TOD has {n_samples} samples, fewer than nperseg={nperseg}."
         )
-
-    n_freqs = nperseg // 2 + 1
 
     # one column of background per detector
     if background is not None and background.ndim == 1:
@@ -599,146 +506,92 @@ def _build_noise_model(
 
     logger.info(
         f"[NOISE] Estimating the auto-spectra of {n_det} detectors "
-        f"(n_freqs = {n_freqs}, nperseg = {nperseg})"
+        f"(n_freqs = {nperseg // 2 + 1}, nperseg = {nperseg})"
     )
     logger.info(
         f"[NOISE] {n_masked} of {n_total} detector samples are masked in the noise "
         f"estimate ({100 * n_masked / n_total:.1f}%)"
     )
 
-    # one auto-spectrum per detector, in order, so that the first n_det columns of
-    # inv_noiseps are the diagonal ones
+    def inverse_spectrum(j: int) -> NDArray[np.float64]:
+        """Inverse spectrum of detector ``j``, with the floor and zero at f = 0."""
+        x = _prepare_for_spectrum(
+            tod[:, j], None if background is None else background[:, j]
+        )
+        _, psd = welch(x=x, fs=sample_rate, window="hann", nperseg=nperseg)
+
+        # an auto-spectrum is positive: the floor keeps the inverse finite
+        inverse = 1.0 / np.maximum(psd, np.median(psd) * _FLOOR_FACTOR)
+        inverse[0] = 0.0
+        return inverse
+
+    # one column per detector, in order, so that column j is the spectrum of detector j
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [
-            executor.submit(
-                _welch_inverse_ps,
-                tod[:, idet],
-                sample_rate,
-                nperseg,
-                None if background is None else background[:, idet],
-            )
-            for idet in range(n_det)
-        ]
+        columns = list(executor.map(inverse_spectrum, range(n_det)))
+    inv_noiseps = np.column_stack(columns)
 
-    # (n_freqs, n_det): one column per detector, and its pair (j, j)
-    inv_noiseps = np.column_stack([future.result() for future in futures])
-    det_pairs = np.array([(idet, idet) for idet in range(n_det)], dtype=np.uintp)
-
-    logger.info(f"[NOISE] Auto-spectra done in {perf_counter() - t0:.2f}s")
     logger.info(
-        f"[NOISE] Estimation done in {perf_counter() - t0:.2f}s "
-        f"(inv_noiseps shape = {inv_noiseps.shape}, "
-        f"det_pairs shape = {det_pairs.shape})"
+        f"[NOISE] Auto-spectra done in {perf_counter() - t0:.2f}s "
+        f"(inv_noiseps shape = {inv_noiseps.shape})"
     )
 
-    return inv_noiseps, det_pairs
+    return inv_noiseps
 
 
-def _welch_inverse_ps(
-    x: NDArray[np.float64],
+def _shape_inverse(
+    inv_noiseps: NDArray[np.float64],
+    freqs: NDArray[np.float64],
+    filters: Sequence[FrequencyFilter],
+    passband: tuple[float, float] | None,
     sample_rate: float,
-    nperseg: int,
-    background: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.float64]:
     """
-    Inverse noise spectrum of one detector, with Welch's method on its whole TOD.
+    Apply the filters, then make the inverse spectra almost zero outside the band.
 
-    The samples outside ``background`` (on the source or flagged) are replaced by a
-    linear interpolation of the good ones, and the mean of the good samples is removed
-    (:func:`~tolomeo._lib.spectral._prepare_for_spectrum`). Then Welch's method with
-    Hann blocks of ``nperseg`` samples, and the inverse with
-    :func:`_inverse_with_floor`.
+    The filters multiply every column by the product of their gains. Then, outside
+    ``passband``, every column becomes ``_STOP_FACTOR`` times its maximum ``|inverse|``
+    inside the band (bin 0 excluded), and bin 0 becomes zero. The filters come first,
+    so that the level of the marginalization is relative to the maximum of the weights
+    that are really used. With no filters and ``passband`` None, ``inv_noiseps`` is
+    returned as it is: bin 0 is already zero from :func:`_inverse_spectra`.
 
     Parameters
     ----------
-    x : :class:`~numpy.ndarray`
-        TOD of one detector. Shape ``(n_samples,)``.
+    inv_noiseps : :class:`~numpy.ndarray` of float64
+        Inverse spectra, one per column. Shape ``(n_freqs, n_cols)``.
+    freqs : :class:`~numpy.ndarray` of float64
+        Frequency of every bin, in Hz. Shape ``(n_freqs,)``.
+    filters : sequence of :data:`~tolomeo.processing.FrequencyFilter`
+        Filters of the inverse spectra; empty for none.
+    passband : 2-tuple of float or None
+        Band of the marginalization, in Hz; None for no marginalization.
     sample_rate : float
         Sampling frequency in Hz.
-    nperseg : int
-        Samples in one Welch block.
-    background : :class:`~numpy.ndarray` of bool, optional
-        True for the samples used. None means all of them. Shape ``(n_samples,)``.
 
     Returns
     -------
-    :class:`~numpy.ndarray`
-        Inverse power spectral density, zero at ``f = 0``.
-        Shape ``(nperseg // 2 + 1,)``.
+    :class:`~numpy.ndarray` of float64
+        The shaped spectra, a new array unless nothing changes.
+        Shape ``(n_freqs, n_cols)``.
     """
-    x = _prepare_for_spectrum(x, background)
-    _, psd = welch(x=x, fs=sample_rate, window="hann", nperseg=nperseg)
+    inv = inv_noiseps
 
-    return _inverse_with_floor(psd)
+    if filters:
+        total_gain = np.ones_like(freqs)
+        for filt in filters:
+            fc = (filt.f_lower, filt.f_upper) if isinstance(filt, Bandpass) else filt.fc
+            total_gain *= gain(freqs, fc, sample_rate, filt.order, btype=filt.type)
+        inv = inv * total_gain[:, None]
 
-
-def _inverse_with_floor(psd: NDArray[np.float64]) -> NDArray[np.float64]:
-    """
-    Element-wise inverse of a power spectrum, with a floor and zero at ``f = 0``.
-
-    The floor is ``_FLOOR_FACTOR`` times the median of ``|psd|``: without it a bin with
-    almost no power would get an enormous weight. The sign is kept, because the real
-    part of a cross power spectral density can be negative. Bin 0 is set to zero: the
-    offset of the TOD gets no weight.
-
-    ``psd`` is ``(n_freqs,)``; the result has the same shape.
-    """
-    floor = np.median(np.abs(psd)) * _FLOOR_FACTOR
-    sign = np.where(psd < 0, -1.0, 1.0)
-    inverse = sign / np.maximum(np.abs(psd), floor)
-    inverse[0] = 0.0
-
-    return inverse
-
-
-def _filter_inverse(
-    inv_noiseps: NDArray[np.float64],
-    freqs: NDArray[np.float64],
-    filters: Sequence[FrequencyFilter] | None,
-    sample_rate: float,
-) -> NDArray[np.float64]:
-    """
-    Apply ``filters`` to the inverse spectra.
-
-    ``inv_noiseps`` is ``(n_freqs, n_cols)`` and ``freqs`` is ``(n_freqs,)``; the
-    result has the shape of ``inv_noiseps``.
-    """
-    if not filters:
-        return inv_noiseps
-
-    total_gain = np.ones_like(freqs)
-    for filt in filters:
-        fc = (filt.f_lower, filt.f_upper) if isinstance(filt, Bandpass) else filt.fc
-        total_gain *= gain(freqs, fc, sample_rate, filt.order, btype=filt.type)
-
-    return inv_noiseps * total_gain[:, None]
-
-
-def _marginalize(
-    inv_noiseps: NDArray[np.float64],
-    freqs: NDArray[np.float64],
-    passband: tuple[float, float] | None,
-) -> NDArray[np.float64]:
-    """
-    Make the inverse spectra almost zero outside ``passband``.
-
-    Outside the band every column becomes ``_STOP_FACTOR`` times its maximum
-    ``|inverse|`` inside the band (bin 0 excluded), and bin 0 becomes zero. With
-    ``passband`` None nothing changes: bin 0 is already zero from
-    :func:`_inverse_with_floor`.
-
-    ``inv_noiseps`` is ``(n_freqs, n_cols)`` and ``freqs`` is ``(n_freqs,)``; the
-    result has the shape of ``inv_noiseps``.
-    """
-    if passband is None:
-        return inv_noiseps
-
-    inv = inv_noiseps.copy()
-    out = (freqs < passband[0]) | (freqs > passband[1])  # the bins the filters removed
-    ref = ~out
-    ref[0] = False  # bin 0 does not count for the maximum
-    inv[out, :] = _STOP_FACTOR * np.abs(inv[ref, :]).max(axis=0)
-    inv[0, :] = 0.0
+    if passband is not None:
+        if inv is inv_noiseps:
+            inv = inv.copy()  # the input is not modified
+        # the bins that the filters removed
+        out = (freqs < passband[0]) | (freqs > passband[1])
+        ref = ~out
+        ref[0] = False  # bin 0 does not count for the maximum
+        inv[out, :] = _STOP_FACTOR * np.abs(inv[ref, :]).max(axis=0)
+        inv[0, :] = 0.0
 
     return inv
 
