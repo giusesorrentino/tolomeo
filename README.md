@@ -1,48 +1,56 @@
 # Tolomeo
 
-`tolomeo` is derived from [ROMA](https://github.com/ilcarogna/MapMaker-ROMA) by Giancarlo de Gasperis ([de Gasperis et al., 2005](https://doi.org/10.1051/0004-6361:20042512)), released under GPL-3.0-or-later; the derived parts are distributed here under MPL-2.0 with the author's permission.
+`tolomeo` is derived from [ROMA](https://github.com/ilcarogna/MapMaker-ROMA) ([de Gasperis et al., 2005](https://doi.org/10.1051/0004-6361:20042512)), released under GPL-3.0-or-later; the derived parts are distributed here under MPL-2.0 with the author's permission.
 
-## Install Guide
+## Installation
 
-### From GitHub
+### With pip
 
-`tolomeo` manages its dependencies using `uv`. If you haven't installed it yet, you can follow the installation guide provided by [Astral](https://docs.astral.sh/uv/getting-started/installation/).
+To use `tolomeo` without changing its code, install it directly from GitHub, with Python 3.12 or later:
 
-Once `uv` is ready, clone this repository locally and navigate into the project directory:
+```bash
+pip install git+https://github.com/giusesorrentino/tolomeo.git
+```
+
+### For development
+
+`tolomeo` manages its dependencies with [`uv`](https://docs.astral.sh/uv/). If you do not have it yet, follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/) by Astral.
+
+Clone the repository and enter the project directory:
 
 ```bash
 git clone https://github.com/giusesorrentino/tolomeo.git
 cd tolomeo
 ```
 
-Then, create a virtual environment:
+Create a virtual environment:
 
 ```bash
 uv venv
 ```
 
-Now that the virtual environment has been created, activate it using the following command on macOS/Linux:
+and activate it on macOS and Linux:
 
 ```bash
 source .venv/bin/activate
 ```
 
-or, on Windows:
+or on Windows:
 
 ```powershell
 .venv\Scripts\activate
 ```
 
-If everything went smoothly, your terminal should look like this:
+The prompt of the terminal now starts with the name of the environment:
 
 ```bash
 (tolomeo) $
 ```
 
 > [!NOTE]
-> Remember to reactivate the environment every time you open a new terminal session!
+> Activate the environment again in every new terminal session.
 
-With the environment active, install all the core and development dependencies:
+With the environment active, install `tolomeo` with its core and development dependencies:
 
 ```bash
 uv sync
