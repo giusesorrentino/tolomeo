@@ -50,13 +50,18 @@ def plot_focal_plane(
     kind, and those outside the axes, which cover the field of view with a margin. A
     channel whose fit failed has no position: it is only counted.
 
+    A beammap read from an old file only knows that a channel is bad
+    (:attr:`~tolomeo.beammap.ChannelFlag.UNKNOWN`): its legend has only the good
+    channels and those with an unknown reason. A new beammap always gives the
+    reasons, and its legend leaves out the unknown one.
+
     Parameters
     ----------
     beammap : :class:`~tolomeo.beammap.BeamMap`
         Offsets and flags of the channels.
     fov : float or str, optional
         Diameter of the field of view, drawn as a dashed circle. A number is in
-        arcmin. Defaults to 4.
+        arcmin. Defaults to ``4``.
     loc : str or pair of floats
         The location of the legend. The string locations place the legend at the
         corresponding position within the bounding box, which by default is
@@ -100,11 +105,16 @@ def plot_focal_plane(
             )
         ]
 
-        # flagged channels: one marker per reason
+        # flagged channels: one marker per reason. UNKNOWN is listed only if a
+        # channel has it (an old file), and then the other reasons only if they
+        # occur: an old file does not have them
+        old_file = np.any((flags & ChannelFlag.UNKNOWN) != 0)
         for flag in ChannelFlag:
+            mask = (flags & flag) != 0
+            if not mask.any() and (flag is ChannelFlag.UNKNOWN or old_file):
+                continue
             name = flag.name.replace("_", " ").lower()  # LaTeX: no underscores
             label, style = _REASONS.get(flag, (name, None))
-            mask = (flags & flag) != 0
             text = f"{label}: {mask.sum()}"
             if style is None:
                 handles.append(Line2D([], [], ls="", label=f"{text} (no position)"))
