@@ -112,6 +112,18 @@ def test_map_round_trip_without_weights_and_unit(tmp_path):
     _assert_same_map(read_map(path), result)
 
 
+def test_map_round_trip_converted_unit(tmp_path):
+    # Check that the unit given by MapResult.to is written as BUNIT and read back.
+    result = _map_result().to("mJy/beam")
+    path = tmp_path / "map.fits"
+
+    write_map(result, path)
+
+    read = read_map(path)
+    _assert_same_map(read, result)
+    assert read.unit == "mJy beam-1"
+
+
 def test_write_map_header_and_extensions(tmp_path):
     path = tmp_path / "map.fits"
 

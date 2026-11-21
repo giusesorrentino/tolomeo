@@ -1,9 +1,11 @@
-from typing import Any
+from typing import Any, Self
 
+import astropy.units as u
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
+from .._lib.units import _to_unit
 from .._typing import Solver
 from .geometry import MapGeometry
 
@@ -71,6 +73,103 @@ class MapResult(BaseModel):
                 raise ValueError(
                     f"`{name}` must have shape (ny, nx) = {shape}, got {array.shape}."
                 )
+
+    def to(
+        self,
+        unit: str | u.UnitBase,
+        *,
+        frequency: float | str | u.Quantity = 90.0,
+        beam_fwhm: float | str | u.Quantity = 12.0,
+    ) -> Self:
+        r"""
+        The same map in another unit.
+
+        ``image`` is multiplied by the conversion factor :math:`c` and ``weights``,
+        an inverse variance, is divided by :math:`c^2`; the other fields do not
+        change. Between a temperature and a flux density per beam (``"Jy/beam"``) the
+        conversion is the Rayleigh-Jeans one, at ``frequency`` and for a Gaussian beam
+        of FWHM ``beam_fwhm`` (see Notes): they are not used for the other units.
+
+        Parameters
+        ----------
+        unit : str or :class:`~astropy.units.UnitBase`
+            The new unit, for example ``"mK"``, ``"uK"`` or ``"mJy/beam"``. A string is
+            read as a FITS unit string.
+        frequency : float, str or :class:`~astropy.units.Quantity`, optional
+            Frequency of the conversion to or from ``Jy/beam``. A number is in GHz.
+            Defaults to ``90``.
+        beam_fwhm : float, str or :class:`~astropy.units.Quantity`, optional
+            FWHM of the beam of the map, for the conversion to or from ``Jy/beam``. A
+            number is in arcsec. For a smoothed map it is the FWHM of the beam
+            convolved with the smoothing kernel. Defaults to ``12``.
+
+        Returns
+        -------
+        :class:`~tolomeo.map.MapResult`
+            A copy with the new ``image``, ``weights`` and ``unit``, the last one in
+            the FITS syntax (``"Jy beam-1"`` for ``"Jy/beam"``). The other arrays are
+            shared with this map, not copied.
+
+        Raises
+        ------
+        ValueError
+            If the unit of this map is not known (None), if ``unit`` is not a FITS
+            unit, if the two units cannot be converted into each other, or if
+            ``frequency`` or ``beam_fwhm`` is not positive.
+
+        Notes
+        -----
+        In the Rayleigh-Jeans limit a brightness temperature :math:`T` gives the flux
+        density per beam
+
+        .. math::
+
+            S_\nu = \frac{2 k_B \nu^2}{c^2}\, T\, \Omega_b, \qquad
+            \Omega_b = \frac{\pi\, \theta_\mathrm{FWHM}^2}{4 \ln 2},
+
+        with :math:`\Omega_b` the solid angle of a Gaussian beam: 1 K is 0.954 Jy/beam
+        at 90 GHz with a FWHM of 12 arcsec. :math:`T` is the main-beam brightness
+        temperature. A map calibrated on the atmosphere (skydips) may be in
+        :math:`T_A^*` instead, which for a compact source is
+        :math:`\eta_\mathrm{mb}\, T`: its flux densities would come out lower by the
+        main-beam efficiency :math:`\eta_\mathrm{mb}`.
+        """
+        if self.unit is None:
+            raise ValueError(
+                "The unit of the map is not known (None): it cannot be converted."
+            )
+        source = u.Unit(self.unit, format="fits")
+        target = u.Unit(unit, format="fits")
+
+        frequency = _to_unit(frequency, u.GHz)
+        beam_fwhm = _to_unit(beam_fwhm, u.arcsec)
+        if frequency <= 0 or beam_fwhm <= 0:
+            raise ValueError(
+                "`frequency` and `beam_fwhm` must be positive, got "
+                f"{frequency} GHz and {beam_fwhm} arcsec."
+            )
+
+        # the beam enters only between a temperature and a flux density per beam:
+        # without it, "K" to "Jy" is refused instead of giving Jy per beam
+        equivalencies = []
+        per_beam = u.Jy / u.beam
+        if source.is_equivalent(per_beam) or target.is_equivalent(per_beam):
+            omega = np.pi * (beam_fwhm * u.arcsec) ** 2 / (4 * np.log(2))
+            equivalencies = u.brightness_temperature(
+                frequency * u.GHz, beam_area=omega.to(u.sr)
+            )
+
+        factor = source.to(target, equivalencies=equivalencies)
+
+        # new arrays: the copy shares with this map the fields that are not updated
+        weights = None if self.weights is None else self.weights / factor**2
+        return self.model_copy(
+            update={
+                "image": factor * self.image,
+                "weights": weights,
+                "unit": target.to_string("fits"),
+            }
+        )
 
 
 class BinnedMapResult(BaseModel):
