@@ -18,6 +18,8 @@ __all__ = ["plot_map"]
 
 
 STYLE_FILE = Path(__file__).resolve().parent / "resources" / "default.mplstyle"
+
+# from https://gist.github.com/zonca/6515744
 CMB_RGB_FILE = (
     Path(__file__).resolve().parent / "resources" / "Planck_Parchment_RGB.txt"
 )
