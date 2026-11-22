@@ -188,13 +188,13 @@ def test_from_yaml_explicit_geometry(tmp_path):
 
 def test_from_yaml_automatic_size_with_center(tmp_path):
     text = (
-        RUN_YAML + "geometry:\n  pixel_size: 5\n  center: [52.0, 41.5]\n  margin: 2\n"
+        RUN_YAML + "geometry:\n  pixel_size: 5\n  center: [52.0, 41.5]\n  margin: 0.2\n"
     )
 
     config = RunConfig.from_yaml(write_run(tmp_path, text))
 
     expected = MapGeometry.from_scan(
-        config.scan, pixel_size=5, center=(RA0, DEC0), margin=2
+        config.scan, pixel_size=5, center=(RA0, DEC0), margin=0.2
     )
     assert config.geometry == expected
 
