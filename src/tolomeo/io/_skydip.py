@@ -9,7 +9,7 @@ from astropy.io import fits
 from numpy.typing import NDArray
 
 from .._lib.messages import _warn
-from .scan import _read_angle
+from ._scan import _read_angle
 
 __all__ = ["SkyDip", "read_skydip"]
 

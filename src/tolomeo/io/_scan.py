@@ -11,9 +11,9 @@ from numpy.typing import NDArray
 
 from ..beammap._beammap import BeamMap
 from ..coords import Coordinates
-from ..coords.transforms import shift_boresight
+from ..coords._transforms import shift_boresight
 from ..tod import Scan, ScanSpec, TimeOrderedData
-from .beammap import read_beammap
+from ._beammap import read_beammap
 
 __all__ = ["read_scan"]
 
@@ -276,7 +276,7 @@ def _read_subscan(file: Path, spec: ScanSpec, columns: list[str]) -> SubScan:
 
     Returns
     -------
-    :class:`~tolomeo.io.scan.SubScan`
+    :class:`~tolomeo.io._scan.SubScan`
         ``signal`` of shape ``(n_samples, n_det)`` and the other arrays of shape
         ``(n_samples,)``; ``source_ra``, ``source_dec`` and ``source_name`` from the
         primary header. ``ValueError`` if the two tables have different lengths, a

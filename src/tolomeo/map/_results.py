@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from .._lib.units import _to_unit
 from .._typing import Solver
-from .geometry import MapGeometry
+from ._geometry import MapGeometry
 
 __all__ = ["BinnedMapResult", "MapResult"]
 

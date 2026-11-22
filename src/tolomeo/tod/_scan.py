@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from .._lib.units import Arcsec
 from ..coords import Coordinates
-from .tod import TimeOrderedData
+from ._tod import TimeOrderedData
 
 __all__ = ["Scan", "ScanSpec"]
 
@@ -26,7 +26,7 @@ class ScanSpec(BaseModel):
         Directory with the FITS subscans; turned into an absolute ``Path``.
     ra_offset, dec_offset : float
         Correction added to the boresight RA and Dec (see
-        :func:`tolomeo.coords.transforms.shift_boresight`). A number is in arcsec;
+        :func:`tolomeo.coords._transforms.shift_boresight`). A number is in arcsec;
         ``"1.5 arcmin"`` or an :class:`~astropy.units.Quantity` is converted to arcsec.
         Defaults to ``0.0``.
     """

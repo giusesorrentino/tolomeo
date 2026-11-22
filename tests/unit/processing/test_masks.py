@@ -3,9 +3,9 @@ import pytest
 from pydantic import ValidationError
 
 from tests.common import ARCMIN, ARCSEC, DEC0, PIXEL_SIZE, RA0, make_scan
-from tolomeo.coords.transforms import radec2latlon
+from tolomeo.coords._transforms import radec2latlon
 from tolomeo.map import MapGeometry
-from tolomeo.processing.masks import EdgeMask, RadiusMask, SigmaClipMask
+from tolomeo.processing import EdgeMask, RadiusMask, SigmaClipMask
 
 GEOMETRY = MapGeometry(nx=60, ny=40, pixel_size=PIXEL_SIZE, center=(RA0, DEC0))
 

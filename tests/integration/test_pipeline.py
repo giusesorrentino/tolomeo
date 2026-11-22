@@ -28,11 +28,11 @@ from tolomeo.processing import (
     Baseline,
     CommonMode,
     FilteringConfig,
+    RadiusMask,
     calibrate,
     process_tod,
     skydip_responsivity,
 )
-from tolomeo.processing.masks import RadiusMask
 
 AMPLITUDE = 5.0  # peak of the source, in the units of the TOD
 NOISE_RMS = 0.05

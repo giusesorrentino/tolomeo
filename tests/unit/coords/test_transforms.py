@@ -3,7 +3,7 @@ import pytest
 from astropy.wcs import WCS
 
 from tests.common import ARCSEC, DEC0, RA0
-from tolomeo.coords.transforms import (
+from tolomeo.coords._transforms import (
     radec2latlon,
     radec2xy,
     rot,

@@ -4,7 +4,7 @@ import numpy as np
 from astropy.io import fits
 
 from tolomeo.coords import Coordinates
-from tolomeo.coords.transforms import radec2latlon
+from tolomeo.coords._transforms import radec2latlon
 from tolomeo.mapmaking._pointing import _pointing_matrix
 from tolomeo.tod import Scan, TimeOrderedData
 

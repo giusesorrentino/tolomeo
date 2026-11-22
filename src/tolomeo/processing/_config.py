@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .._lib.units import Days, Hz
 from .._typing import CommonModeMethod
-from .masks import Mask
+from ._masks import Mask
 
 __all__ = [
     "Bandpass",
@@ -253,7 +253,7 @@ class FilteringConfig(BaseModel):
         does not extend it: to keep the common mode and the baseline, list them.
     mask : ``RadiusMask``, ``SigmaClipMask``, ``EdgeMask`` or None
         Leaves the source out of the fits of the steps that work subscan by subscan.
-        The masks are in :mod:`~tolomeo.processing.masks`.
+        The masks are in :mod:`~tolomeo.processing`.
         Defaults to ``None``: every sample is used.
 
     Examples

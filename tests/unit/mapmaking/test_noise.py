@@ -22,8 +22,7 @@ from tolomeo.mapmaking._noise import (
     _inverse_spectra,
     _shape_inverse,
 )
-from tolomeo.processing import Bandpass, Highpass, Lowpass
-from tolomeo.processing.masks import EdgeMask
+from tolomeo.processing import Bandpass, EdgeMask, Highpass, Lowpass
 
 rng = np.random.default_rng(23)
 

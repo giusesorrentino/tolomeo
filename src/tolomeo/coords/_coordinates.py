@@ -17,31 +17,25 @@ class Coordinates(BaseModel):
     ra : :class:`~numpy.ndarray` of float64
         Right ascension of the telescope boresight at each time sample, in radians,
         in the FK5 reference frame (J2000 equinox). Shape: ``(n_samples,)``.
-
     dec : :class:`~numpy.ndarray` of float64
         Declination of the telescope boresight at each time sample, in radians,
         in the FK5 reference frame (J2000 equinox). Shape: ``(n_samples,)``.
-
     par_angle : :class:`~numpy.ndarray` of float64
         Parallactic angle at each time sample, in radians. It specifies
         the rotation between the detector-coordinate axes and the
         celestial-coordinate axes. Shape: ``(n_samples,)``.
-
     az : :class:`~numpy.ndarray` of float64
         Azimuth of the boresight at each time sample, in radians.
         Shape: ``(n_samples,)``.
-
     el : :class:`~numpy.ndarray` of float64
         Elevation of the boresight at each time sample, in radians.
         Shape: ``(n_samples,)``.
-
     source_ra, source_dec : :class:`~numpy.ndarray` of float64 or None
         Position of the source (the target of the scan) at each time sample, in
         radians, J2000, as written in the header of every FITS subscan: the same
         at every sample for a fixed source, different from one subscan to the
         next for a planet. None if it is not known (a scan built by hand).
         Shape: ``(n_samples,)``.
-
     source_name : str or None
         Name of the source, as written in the ``SOURCE`` keyword of the header of
         the FITS subscans (for example ``"MARS"``). None if it is not known.

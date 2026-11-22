@@ -19,8 +19,7 @@ from tolomeo._cli.config import (
     RunConfig,
 )
 from tolomeo.map import MapGeometry
-from tolomeo.processing import Bandpass, Lowpass
-from tolomeo.processing.masks import RadiusMask
+from tolomeo.processing import Bandpass, Lowpass, RadiusMask
 
 # -----------------------------------------------------------------------------
 # NoiseConfig

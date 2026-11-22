@@ -12,7 +12,7 @@ from tolomeo._cli import main
 from tolomeo.coords import Coordinates
 from tolomeo.map import MapGeometry
 from tolomeo.mapmaking import binned_map, estimate_inverse_noise, gls_map
-from tolomeo.plotting.map import CMB_RGB_FILE, STYLE_FILE, _cmb_cmap
+from tolomeo.plotting._map import CMB_RGB_FILE, STYLE_FILE, _cmb_cmap
 from tolomeo.processing import FilteringConfig, process_tod
 from tolomeo.tod import Scan, TimeOrderedData
 

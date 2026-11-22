@@ -9,14 +9,16 @@ from tolomeo.processing import (
     Bandpass,
     Baseline,
     CommonMode,
+    EdgeMask,
     FilteringConfig,
     Highpass,
     Lowpass,
+    RadiusMask,
     RemoveModes,
     RemoveSpline,
+    SigmaClipMask,
     Window,
 )
-from tolomeo.processing.masks import EdgeMask, RadiusMask, SigmaClipMask
 
 
 def _valid_config_dict():

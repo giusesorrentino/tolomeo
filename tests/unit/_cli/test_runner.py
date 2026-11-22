@@ -23,8 +23,7 @@ from tolomeo._cli.config import (
 from tolomeo._cli.runner import RunMapmaker
 from tolomeo.map import MapGeometry, MapResult
 from tolomeo.mapmaking import estimate_inverse_noise
-from tolomeo.processing import FilteringConfig
-from tolomeo.processing.masks import RadiusMask
+from tolomeo.processing import FilteringConfig, RadiusMask
 
 GEOMETRY = MapGeometry(nx=36, ny=30, pixel_size=PIXEL_SIZE, center=(RA0, DEC0))
 

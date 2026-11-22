@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
 
 from .._lib.units import Arcmin, Degrees
-from ..coords.transforms import radec2latlon
+from ..coords._transforms import radec2latlon
 from ..map import MapGeometry
 from ..tod import Scan
 

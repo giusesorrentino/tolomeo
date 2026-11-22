@@ -15,7 +15,8 @@ src/tolomeo/
   __init__.py      the "tolomeo" logger (INFO on stdout), tolomeo.debug() and tolomeo.info()
   _typing.py       Literal aliases: Projection, Frame, PlotAxes, CommonModeMethod, ResidualNorm
   tod/             TimeOrderedData, Scan, ScanSpec
-  coords/          Coordinates; transforms (rot, shift_boresight, radec2xy, xy2latlon, radec2latlon)
+  coords/          Coordinates; _transforms, private (rot, shift_boresight, radec2xy, xy2latlon,
+                   radec2latlon)
   map/             MapGeometry (to_wcs, from_scan, from_beam), MapResult, BinnedMapResult
   io/              read_scan, read_skydip, write_map, read_map
   processing/      process_tod, clean_subscans, FilteringConfig and its steps, masks, skydip calibration

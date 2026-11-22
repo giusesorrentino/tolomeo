@@ -1,5 +1,5 @@
-from .calibration import calibrate, skydip_responsivity
-from .config import (
+from ._calibration import calibrate, skydip_responsivity
+from ._config import (
     Bandpass,
     Baseline,
     CommonMode,
@@ -11,8 +11,8 @@ from .config import (
     RemoveSpline,
     Window,
 )
-from .filtering import clean_subscans, process_tod
-from .masks import EdgeMask, RadiusMask, SigmaClipMask
+from ._filtering import clean_subscans, process_tod
+from ._masks import EdgeMask, RadiusMask, SigmaClipMask
 
 __all__ = [
     "Bandpass",

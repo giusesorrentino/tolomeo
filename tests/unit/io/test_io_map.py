@@ -6,7 +6,7 @@ from astropy.io import fits
 
 from tests.common import DEC0, RA0
 from tolomeo.io import read_map, write_map
-from tolomeo.io.map import check_fits_suffix
+from tolomeo.io._map import check_fits_suffix
 from tolomeo.map import MapGeometry, MapResult
 
 rng = np.random.default_rng(3)

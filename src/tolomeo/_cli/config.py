@@ -95,10 +95,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .._lib.units import Kelvin, _to_unit
 from .._typing import ResidualNorm, Solver
 from ..io import read_scan
-from ..io.map import check_fits_suffix
+from ..io._map import check_fits_suffix
 from ..map import MapGeometry
 from ..processing import FilteringConfig, FrequencyFilter
-from ..processing.masks import Mask
+from ..processing._masks import Mask
 from ..tod import Scan, ScanSpec
 
 

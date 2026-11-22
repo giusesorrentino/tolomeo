@@ -12,12 +12,12 @@ from tolomeo.processing import (
     FilteringConfig,
     Highpass,
     Lowpass,
+    RadiusMask,
     RemoveModes,
     Window,
     clean_subscans,
     process_tod,
 )
-from tolomeo.processing.masks import RadiusMask
 
 rng = np.random.default_rng(11)
 

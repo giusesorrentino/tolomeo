@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .._lib.units import Arcsec, Radians, _to_unit
 from .._typing import Frame, Projection
-from ..coords.transforms import radec2xy, rot
+from ..coords._transforms import radec2xy, rot
 from ..tod import Scan
 
 __all__ = ["MapGeometry"]

@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 
 from .._lib.messages import _warn
 from .._lib.units import _is_temperature
-from ..io.skydip import SkyDip
+from ..io._skydip import SkyDip
 from ..tod import Scan
 
 __all__ = ["calibrate", "skydip_responsivity"]
@@ -29,7 +29,7 @@ def skydip_responsivity(
 
     Parameters
     ----------
-    skydips : sequence of :class:`~tolomeo.io.skydip.SkyDip`
+    skydips : sequence of :class:`~tolomeo.io.SkyDip`
         From :func:`~tolomeo.io.read_skydip`. The result is in the order of the
         ``channel_ids`` given to it, which for :func:`calibrate` must be
         ``scan.channel_ids``.

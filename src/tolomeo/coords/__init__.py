@@ -1,3 +1,3 @@
-from .coordinates import Coordinates
+from ._coordinates import Coordinates
 
 __all__ = ["Coordinates"]

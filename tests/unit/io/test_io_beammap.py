@@ -96,7 +96,7 @@ def test_write_beammap_header(tmp_path):
 
 
 def test_write_beammap_version_of_tolomeo(tmp_path, monkeypatch):
-    monkeypatch.setattr("tolomeo.io.beammap.version", lambda name: "9.9.9")
+    monkeypatch.setattr("tolomeo.io._beammap.version", lambda name: "9.9.9")
     path = tmp_path / "beammap.dat"
 
     write_beammap(_beammap(), path)
@@ -109,7 +109,7 @@ def test_write_beammap_without_version_of_tolomeo(tmp_path, monkeypatch):
     def not_installed(name):
         raise PackageNotFoundError(name)
 
-    monkeypatch.setattr("tolomeo.io.beammap.version", not_installed)
+    monkeypatch.setattr("tolomeo.io._beammap.version", not_installed)
     path = tmp_path / "beammap.dat"
 
     write_beammap(_beammap(), path)

@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from ..coords import Coordinates
-from ..coords.transforms import radec2xy, rot
+from ..coords._transforms import radec2xy, rot
 from ..map import MapGeometry
 
 _BLOCK = 16384

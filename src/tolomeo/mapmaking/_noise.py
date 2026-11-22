@@ -44,8 +44,8 @@ from .._lib.spectral import _check_nyquist, _narrow_passband, _prepare_for_spect
 from .._lib.units import _is_temperature
 from .._signal.filters import gain
 from ..map import MapGeometry
-from ..processing.config import Bandpass, FrequencyFilter, Highpass, Lowpass
-from ..processing.masks import Mask, RadiusMask
+from ..processing._config import Bandpass, FrequencyFilter, Highpass, Lowpass
+from ..processing._masks import Mask, RadiusMask
 from ..tod import Scan
 from ._pointing import _pointing_matrix
 

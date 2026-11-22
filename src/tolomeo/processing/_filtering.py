@@ -35,7 +35,7 @@ from .._signal.filters import bandpass, highpass, lowpass
 from .._signal.splines import bspline_knots
 from ..map import MapGeometry
 from ..tod import Scan
-from .config import (
+from ._config import (
     Bandpass,
     Baseline,
     CommonMode,
@@ -46,7 +46,7 @@ from .config import (
     RemoveSpline,
     Window,
 )
-from .masks import RadiusMask
+from ._masks import RadiusMask
 
 logger = logging.getLogger(__name__)
 

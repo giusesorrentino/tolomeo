@@ -12,8 +12,8 @@ from scipy.spatial.distance import pdist, squareform
 
 from .._lib.parallel import _resolve_workers
 from .._lib.units import _to_unit
-from ..coords.transforms import radec2xy, rot
-from ..io.beammap import write_beammap
+from ..coords._transforms import radec2xy, rot
+from ..io._beammap import write_beammap
 from ..tod import Scan
 from ._beammap import BeamMap, ChannelFlag
 

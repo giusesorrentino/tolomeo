@@ -19,6 +19,11 @@ paths:
     whose name has no underscore can still be private, so the public API is declared explicitly and not guessed from the
     names.
 - How these rules are applied in this package:
+  - Every module of a public subpackage starts with an underscore (`io/_scan.py`,
+    `map/_results.py`, `processing/_filtering.py`), as in SciPy: the public names are
+    only the ones that the package `__init__.py` re-exports. Code and tests import a
+    public name from the package (`from tolomeo.processing import RadiusMask`), and a
+    private one from its module (`from tolomeo.io._map import check_fits_suffix`).
   - A function or class that is part of the public API keeps a plain name and is listed in the `__all__` of the module
     that defines it, **also when that module is private**, and in the `__all__` of the package `__init__.py` that
     re-exports it. In `mapmaking`: `_maps.py` has `__all__ = ["binned_map", "gls_map"]`, and

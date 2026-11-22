@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from tests.common import make_scan
-from tolomeo.io.skydip import SkyDip
+from tolomeo.io import SkyDip
 from tolomeo.processing import calibrate, skydip_responsivity
 
 T_ATM = 267.0
