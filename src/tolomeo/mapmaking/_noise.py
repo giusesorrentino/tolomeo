@@ -41,6 +41,7 @@ from scipy.signal import welch
 from .._lib.messages import _warn
 from .._lib.parallel import _resolve_workers
 from .._lib.spectral import _check_nyquist, _narrow_passband, _prepare_for_spectrum
+from .._lib.units import _is_temperature
 from .._signal.filters import gain
 from ..map import MapGeometry
 from ..processing.config import Bandpass, FrequencyFilter, Highpass, Lowpass
@@ -246,8 +247,9 @@ def estimate_inverse_noise(
         halves at the boundary of subscans nearest to its middle, and each half is
         cleaned with the binned map of the other one on ``geometry`` (see
         :func:`_leave_one_out_residual`). It needs ``geometry``, at least two scans of
-        the same field and a calibrated TOD (a warning if ``scan.tod.unit`` is None),
-        and excludes ``mask`` and ``background``. Defaults to ``False``.
+        the same field and a calibrated TOD (a warning if ``scan.tod.unit`` is not a
+        temperature), and excludes ``mask`` and ``background``. Defaults to
+        ``False``.
     workers : int, optional
         Maximum number of workers to use for parallel computation. If negative,
         the value wraps around from ``os.cpu_count()``.
@@ -327,7 +329,7 @@ def estimate_inverse_noise(
     tod = scan.tod.signal
     if leave_one_out:
         tod, background = _leave_one_out_residual(scan, geometry, background, workers)
-        if scan.tod.unit is None:
+        if not _is_temperature(scan.tod.unit):
             _warn(
                 "The TOD is not calibrated: the leave-one-out puts all the detectors "
                 "in one map, and their different responsivities leave part of the "

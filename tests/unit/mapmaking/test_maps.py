@@ -181,6 +181,13 @@ def test_gls_map_cg_and_minres_give_the_same_map(residual_norm):
     )
 
 
+def test_gls_map_unit_of_a_raw_scan():
+    # The map takes the unit of the TOD: rad, the default, for a raw scan.
+    scan = make_scan()
+
+    assert gls_map(scan, GEOMETRY, _white_inverse_noise(scan)).unit == "rad"
+
+
 def test_gls_map_weights_and_unit():
     # The weight of a pixel is the sum of the zero-lag weights of its samples.
     scan = make_scan()

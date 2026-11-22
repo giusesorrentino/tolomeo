@@ -16,6 +16,11 @@ def _tod(n_samples=10, n_det=2):
     )
 
 
+def test_tod_default_unit_is_rad():
+    # The raw TOD of MISTRAL is the phase of the KIDs.
+    assert _tod().unit == "rad"
+
+
 # -----------------------------------------------------------------------------
 # sample_rate
 # -----------------------------------------------------------------------------

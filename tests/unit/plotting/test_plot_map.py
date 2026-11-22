@@ -70,6 +70,7 @@ def test_plot_map_binned_result():
         ("K", r"Temperature [$\mathrm{K}_\mathrm{RJ}$]"),
         ("uK", r"Temperature [$\mathrm{\mu K}_\mathrm{RJ}$]"),
         ("mJy beam-1", r"Surface brightness [$\mathrm{mJy\,beam^{-1}}$]"),
+        ("rad", r"Phase [$\mathrm{rad}$]"),
         ("Hz", r"Signal [$\mathrm{Hz}$]"),
         ("K_RJ", r"Signal [K\_RJ]"),  # not a FITS unit: shown as it is, escaped
     ],

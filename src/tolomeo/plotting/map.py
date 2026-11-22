@@ -72,6 +72,8 @@ def _colorbar_label(unit: str | None) -> str:
     symbol = parsed.to_string("latex_inline").strip("$")
     if parsed.physical_type == "temperature":
         return rf"Temperature [${symbol}_\mathrm{{RJ}}$]"
+    if parsed.physical_type == "angle":
+        return rf"Phase [${symbol}$]"
     if parsed.is_equivalent(u.Jy / u.beam):
         return rf"Surface brightness [${symbol}$]"
     return rf"Signal [${symbol}$]"
@@ -91,9 +93,69 @@ def plot_map(
     ylim: tuple[float, float] | None = None,
     contour: bool = False,
 ) -> Figure:
-    """ci penso dopo al docstring"""
+    """
+    Plot a map, with its colorbar.
+
+    Only the pixels observed with at least ``min_hits_frac`` of the largest number of
+    hits are shown, the others are grey: the edges of a scan, with few samples, are very
+    noisy. The figure is drawn with the style of ``resources/default.mplstyle``, which
+    needs LaTeX.
+
+    Parameters
+    ----------
+    result : :class:`~tolomeo.map.MapResult` or :class:`~tolomeo.map.BinnedMapResult`
+        The map to plot.
+    percentiles : 2-tuple of float, optional
+        Lower and upper percentile of the pixels shown that give the limits of the
+        colour scale, for example ``(1, 99.5)``. Not used for a limit given with
+        ``vmin`` or ``vmax``. Defaults to ``None``: the minimum and the maximum.
+    min_hits_frac : float, optional
+        Fraction, from 0 to 1, of the largest number of hits that a pixel needs to be
+        shown. Defaults to ``0.1``.
+    vmin, vmax : float, optional
+        Limits of the colour scale, in the units of the map after ``offset``. Each one
+        replaces the limit from ``percentiles``. Defaults to ``None``.
+    axes : :class:`~tolomeo._typing.PlotAxes`, optional
+        ``"offset"``: offsets from the centre of the projection, in arcmin.
+        ``"radec"``: right ascension and declination, from the WCS of the map.
+        ``"pixel"`` is not implemented yet. Defaults to ``"offset"``.
+    cmap : str, optional
+        Name of a matplotlib colormap, or ``"cmb"`` for the Planck colormap of the CMB.
+        The latter is diverging: unless both ``vmin`` and ``vmax`` are given, the
+        colour scale is symmetric around zero. Defaults to ``"afmhot"``.
+    label : str, optional
+        Label of the colorbar. Defaults to ``None``: built from the unit of the map,
+        "Temperature" (Rayleigh-Jeans) for a temperature, "Phase" for an angle,
+        "Surface brightness" for a flux density per beam and "Signal" for any other
+        unit, followed by the unit; "Signal [arbitrary units]" without a unit, always
+        for a :class:`~tolomeo.map.BinnedMapResult`.
+    offset : "median", float or None, optional
+        Value subtracted from the map, whose zero the GLS does not fix: ``"median"``
+        for the median of the pixels shown, a number, or None to plot the map as it
+        is. Defaults to ``"median"``.
+    xlim, ylim : 2-tuple of float, optional
+        Limits of the axes, in arcmin with ``"offset"`` and in pixels with
+        ``"radec"`` (the image is drawn in pixel coordinates). Defaults to ``None``:
+        the whole map.
+    contour : bool, optional
+        Draw contours at 10, 30, 50, 70 and 90 percent of the peak of the pixels
+        shown; none if the peak is not positive. Defaults to ``False``.
+
+    Returns
+    -------
+    :class:`~matplotlib.figure.Figure`
+        The figure, with the map and its colorbar as its two axes.
+
+    Raises
+    ------
+    ValueError
+        If ``axes`` is not valid, if ``min_hits_frac`` is not between 0 and 1, or if
+        no pixel shown has a finite value.
+    NotImplementedError
+        If ``axes`` is ``"pixel"``.
+    """
     if axes not in ("offset", "radec", "pixel"):
-        raise ValueError(f"`axes` must be 'offset' or 'radec', got {axes!r}.")
+        raise ValueError(f"`axes` must be 'offset', 'radec' or 'pixel', got {axes!r}.")
 
     if label is None:
         # a BinnedMapResult has no unit
@@ -110,7 +172,10 @@ def plot_map(
     good = (hits > 0) & (hits >= min_hits_frac * hits.max())
 
     if not np.isfinite(data[good]).any():
-        raise ValueError(" (ci penso poi all'errore) ")
+        raise ValueError(
+            "No pixel to show: none with at least `min_hits_frac` = "
+            f"{min_hits_frac} of the largest number of hits has a finite value."
+        )
 
     data = np.where(good, data, np.nan)
 
@@ -214,7 +279,3 @@ def plot_map(
         cb.ax.tick_params(direction="out")
 
         return fig
-
-
-def angular_spectrum():
-    pass

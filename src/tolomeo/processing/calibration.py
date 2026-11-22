@@ -6,6 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from .._lib.messages import _warn
+from .._lib.units import _is_temperature
 from ..io.skydip import SkyDip
 from ..tod import Scan
 
@@ -94,8 +95,8 @@ def calibrate(
     scan : :class:`~tolomeo.tod.Scan`
         Data to calibrate. It is not modified.
     responsivity : :class:`~numpy.ndarray`
-        From :func:`skydip_responsivity`, in the order of ``scan.channel_ids``.
-        Shape ``(n_det,)``.
+        From :func:`skydip_responsivity`, in the order of ``scan.channel_ids``: for
+        MISTRAL in rad/K. Shape ``(n_det,)``.
     tau_atm : float, optional
         If given, the signal is also divided by ``exp(-tau_atm * airmass)``, the
         transmission of the atmosphere at the elevation of each sample, so that the
@@ -111,9 +112,15 @@ def calibrate(
     Raises
     ------
     ValueError
-        If ``responsivity`` does not have one value per detector, or if one of them is
+        If the TOD is already in a temperature unit (calibrated twice), if
+        ``responsivity`` does not have one value per detector, or if one of them is
         zero or not finite.
     """
+    if _is_temperature(scan.tod.unit):
+        raise ValueError(
+            f"The TOD is already in {scan.tod.unit!r}: it has been calibrated."
+        )
+
     n_det = scan.tod.signal.shape[1]
     responsivity = np.asarray(responsivity, dtype=np.float64)
 

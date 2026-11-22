@@ -242,9 +242,12 @@ def test_estimate_inverse_noise_leave_one_out_single_subscan_raises():
         )
 
 
-def test_estimate_inverse_noise_leave_one_out_uncalibrated_warns():
+@pytest.mark.parametrize("unit", ["rad", None])
+def test_estimate_inverse_noise_leave_one_out_uncalibrated_warns(unit):
+    # "rad" is the raw TOD of MISTRAL, None a TOD of unknown unit: neither is
+    # calibrated.
     scan, geometry = _two_passes_on_a_source()
-    raw = scan.model_copy(update={"tod": scan.tod.model_copy(update={"unit": None})})
+    raw = scan.model_copy(update={"tod": scan.tod.model_copy(update={"unit": unit})})
 
     with pytest.warns(UserWarning, match="not calibrated"):
         estimate_inverse_noise(

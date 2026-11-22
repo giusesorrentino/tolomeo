@@ -80,7 +80,17 @@ def test_calibrate_does_not_modify_the_input():
     calibrate(scan, RESPONSIVITY)
 
     np.testing.assert_array_equal(scan.tod.signal, original)
-    assert scan.tod.unit is None
+    assert scan.tod.unit == "rad"
+
+
+@pytest.mark.parametrize("unit", ["K", "mK"])
+def test_calibrate_twice_raises(unit):
+    # A TOD already in a temperature would be divided by the responsivity again.
+    scan = make_scan()
+    scan = scan.model_copy(update={"tod": scan.tod.model_copy(update={"unit": unit})})
+
+    with pytest.raises(ValueError, match=r"already in"):
+        calibrate(scan, RESPONSIVITY)
 
 
 def test_calibrate_opacity_correction():

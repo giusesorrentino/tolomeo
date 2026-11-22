@@ -32,6 +32,20 @@ def test_plot_psd_unit_in_the_label():
     plt.close(fig)
 
 
+@pytest.mark.parametrize(
+    ("unit", "label"), [("rad", "rad$^2$/Hz"), (None, "arbitrary")]
+)
+def test_plot_psd_unit_from_the_tod(unit, label):
+    scan = make_scan()
+    tod = scan.tod.model_copy(update={"unit": unit})
+
+    fig = plot_psd(tod)
+
+    assert label in fig.axes[0].get_ylabel()
+
+    plt.close(fig)
+
+
 def test_plot_psd_no_long_enough_subscan_raises():
     # Subscans of a single sample have no spectrum.
     scan = make_scan(n_subscans=4, subscan_len=1)

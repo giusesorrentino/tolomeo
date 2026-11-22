@@ -12,8 +12,8 @@ class TimeOrderedData(BaseModel):
     Attributes
     ----------
     signal : :class:`~numpy.ndarray` of float64
-        One row per time sample, one column per detector, in the units of the
-        instrument. Shape ``(n_samples, n_det)``.
+        One row per time sample, one column per detector, in ``unit``.
+        Shape ``(n_samples, n_det)``.
     time : :class:`~numpy.ndarray` of float64
         Time of every sample, modified Julian date (days). Shape ``(n_samples,)``.
     flags : :class:`~numpy.ndarray` of bool
@@ -21,12 +21,16 @@ class TimeOrderedData(BaseModel):
     segments : :class:`~numpy.ndarray` of int64
         First row of every subscan, followed by ``n_samples``: subscan ``k`` is
         ``signal[segments[k]:segments[k + 1]]``. Shape ``(n_subscans + 1,)``.
-    passband : float or 2-tuple of floats, optional
-        ...
+    passband : 2-tuple of float, optional
+        Band, in Hz, left by the frequency filters already applied to ``signal`` by
+        :func:`~tolomeo.processing.process_tod`: the intersection of their bands.
+        :func:`~tolomeo.mapmaking.estimate_inverse_noise` uses it for the
+        marginalization. Defaults to ``None``: no filter applied yet.
     unit : str, optional
-        Unit of ``signal``, as a FITS unit string (``"K"`` after
-        :func:`~tolomeo.processing.calibrate`). None means not known: the raw units of
-        the instrument.
+        Unit of ``signal``, as a FITS unit string: ``"rad"`` for the raw TOD of
+        MISTRAL, the phase shift of the KIDs, and ``"K"`` after
+        :func:`~tolomeo.processing.calibrate`. For another instrument give the unit
+        of its signal, or None if it is not known. Defaults to ``"rad"``.
     """
 
     # numpy arrays are not pydantic types: they are only checked with isinstance
@@ -37,7 +41,7 @@ class TimeOrderedData(BaseModel):
     flags: NDArray[np.bool_]  # shape (n_samples,)
     segments: NDArray[np.int64]
     passband: tuple[float, float] | None = None
-    unit: str | None = None
+    unit: str | None = "rad"
 
     def select(
         self, mask: NDArray[np.bool_]

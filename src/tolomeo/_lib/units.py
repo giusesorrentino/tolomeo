@@ -80,6 +80,21 @@ def _to_unit(value: Any, unit: u.UnitBase) -> float:
         raise ValueError(f"{value!r} cannot be converted to {unit}.") from None
 
 
+def _is_temperature(unit: str | None) -> bool:
+    """
+    Whether ``unit``, a FITS unit string, is a temperature (``"K"``, ``"mK"``, ...).
+
+    None and a string that astropy cannot read are not: for a TOD they mean not
+    calibrated.
+    """
+    if unit is None:
+        return False
+    try:
+        return u.Unit(unit, format="fits").physical_type == "temperature"
+    except ValueError:
+        return False
+
+
 def _converter(unit: u.UnitBase) -> BeforeValidator:
     """Pydantic validator that runs :func:`_to_unit` before the type check of the field."""
 

@@ -3,7 +3,16 @@ import numpy as np
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from tolomeo._lib.units import Arcmin, Arcsec, Days, Degrees, Hz, Kelvin, _to_unit
+from tolomeo._lib.units import (
+    Arcmin,
+    Arcsec,
+    Days,
+    Degrees,
+    Hz,
+    Kelvin,
+    _is_temperature,
+    _to_unit,
+)
 
 
 class _Model(BaseModel):
@@ -105,3 +114,24 @@ def test_aliases_convert_when_the_model_is_built(field, value, expected):
 def test_aliases_wrong_unit_raises():
     with pytest.raises(ValidationError):
         _Model(fc="3 arcsec")
+
+
+# -----------------------------------------------------------------------------
+# _is_temperature
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("unit", "expected"),
+    [
+        ("K", True),
+        ("mK", True),
+        ("uK", True),
+        ("rad", False),
+        ("Jy beam-1", False),
+        (None, False),
+        ("arbitrary", False),
+    ],
+)
+def test_is_temperature(unit, expected):
+    assert _is_temperature(unit) is expected
