@@ -20,7 +20,8 @@ the kernel:
     Shape ``(n_cols, 2)``, the two detectors of every column: ``(j, j)`` for an
     auto-spectrum, ``(i, j)`` with ``i != j`` for a cross-spectrum.
 ``lag_zero``
-    Shape ``(n_det,)``, used by the preconditioner of the solver.
+    Shape ``(n_det,)``, used by the preconditioner of the solver and for the weight
+    map of the result.
 
 Only auto-spectra are supported, so ``n_cols = n_det``.
 """
@@ -79,7 +80,7 @@ class LeaveOneOutError(ValueError):
 
 
 class InverseNoise(BaseModel):
-    """
+    r"""
     Noise model of the GLS map: the inverse noise spectra of the detectors.
 
     Output of :func:`estimate_inverse_noise` and input of
@@ -96,8 +97,14 @@ class InverseNoise(BaseModel):
     det_pairs : :class:`~numpy.ndarray` of uintp
         The two detectors of every column of ``inv_noiseps``. Shape ``(n_cols, 2)``.
     lag_zero : :class:`~numpy.ndarray` of float64
-        Weight of every detector for the preconditioner: sum of the bins of its
-        auto-spectrum divided by ``nperseg``. Shape ``(n_det,)``.
+        Weight of every detector for the preconditioner of the solver and for the
+        weight map: the sum of the bins of its inverse auto-spectrum divided by
+        ``nperseg``, :math:`\ell_j = \sum_k N_j^{-1}(f_k) / n_\mathrm{seg}`. It is the
+        diagonal element :math:`(N^{-1})_{tt}` of the detector up to a factor that is
+        the same for all the detectors: for white noise of rms :math:`\sigma_j`,
+        without filters and marginalization, :math:`\ell_j \simeq (f_s/4)/\sigma_j^2`.
+        That is half of the zero lag of the filter applied by ``N^-1``, because the sum
+        runs over the bins of one side of the spectrum only. Shape ``(n_det,)``.
     sample_rate : float
         Sampling frequency of the TOD the spectra come from, in Hz.
     channel_ids : list of int

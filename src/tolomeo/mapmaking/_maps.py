@@ -329,10 +329,28 @@ def _bin(
     power: int = 1,
     det_weights: NDArray[np.float64] | None = None,
 ) -> NDArray[np.float64]:
-    """
+    r"""
     Sum over the used samples of every pixel.
 
-    One detector at a time, so that no array with all the used samples is created.
+    For every pixel :math:`p` it computes
+
+    .. math::
+
+        \mathrm{out}_p = \sum_j w_j \sum_{t:\ p_{tj} = p} v_{tj}^{\,k},
+
+    where the inner sum runs over the used samples :math:`t` of detector :math:`j`
+    that fall in :math:`p`, :math:`v` is ``values``, :math:`k` is ``power`` and
+    :math:`w_j` is ``det_weights``. The map maker uses it for four sums:
+
+    * no ``values`` and no ``det_weights``: the hits :math:`N_p`;
+    * ``values=tod``: :math:`\sum d`, the numerator of the binned map;
+    * ``values=tod`` and ``power=2``: :math:`\sum d^2`, for its standard deviation;
+    * ``det_weights=lag_zero``: :math:`\sum_j \ell_j N_{pj}`, with :math:`N_{pj}` the
+      samples of detector :math:`j` in :math:`p`: the weight map, proportional to the
+      diagonal of :math:`P^T N^{-1} P` (see :class:`~tolomeo.mapmaking.InverseNoise`).
+
+    One detector at a time, with :func:`numpy.bincount`, so that no array with all the
+    used samples is created.
 
     Parameters
     ----------

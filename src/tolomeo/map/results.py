@@ -13,7 +13,7 @@ __all__ = ["BinnedMapResult", "MapResult"]
 
 
 class MapResult(BaseModel):
-    """
+    r"""
     Output of :func:`tolomeo.mapmaking.gls_map`.
 
     Attributes
@@ -34,12 +34,15 @@ class MapResult(BaseModel):
     solver : :class:`~tolomeo._typing.Solver`
         Solver that made the map: ``"cg"`` (conjugate gradient) or ``"minres"``.
     weights : :class:`~numpy.ndarray` of float64, optional
-        Noise weight of every pixel: the sum, over the samples used in the pixel, of the
-        zero-lag weight of their detector (``lag_zero``). It is the diagonal of the
-        preconditioner of the solver: for white noise it is proportional to
-        the inverse of the variance of the pixel, for correlated noise only an
-        approximation of it. 0 where ``hits == 0``. None if it was not computed.
-        Shape ``(ny, nx)``.
+        Noise weight of every pixel, :math:`A_{pp} = \sum_j \ell_j N_{pj}`: the sum,
+        over the samples used in the pixel, of the zero-lag weight :math:`\ell_j` of
+        their detector (``lag_zero``), with :math:`N_{pj}` the samples of detector
+        :math:`j` in pixel :math:`p`. Up to a constant factor it is the diagonal of
+        :math:`A = P^T N^{-1} P`, the preconditioner of the solver. For white noise it
+        is :math:`f_s/4` times the inverse of the variance of the pixel (see
+        :class:`~tolomeo.mapmaking.InverseNoise`); for correlated noise the variance
+        is :math:`(A^{-1})_{pp}`, which :math:`1/A_{pp}` only approximates. 0 where
+        ``hits == 0``. None if it was not computed. Shape ``(ny, nx)``.
     converged : bool
         True if the solver reached ``tol``; False if it stopped before, at ``maxiter``
         or for numerical reasons. Defaults to ``True``.
