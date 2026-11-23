@@ -11,7 +11,7 @@ from matplotlib.colors import Colormap, ListedColormap
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from .._typing import PlotAxes
+from .._typing import PlotCoords
 from ..map import BinnedMapResult, MapResult
 
 __all__ = ["plot_map"]
@@ -87,7 +87,7 @@ def plot_map(
     min_hits_frac: float = 0.1,
     vmin: float | None = None,
     vmax: float | None = None,
-    axes: PlotAxes = "offset",
+    coords: PlotCoords = "offset",
     cmap: str = "afmhot",
     label: str | None = None,
     offset: Literal["median"] | float | None = "median",
@@ -117,9 +117,9 @@ def plot_map(
     vmin, vmax : float, optional
         Limits of the colour scale, in the units of the map after ``offset``. Each one
         replaces the limit from ``percentiles``. Defaults to ``None``.
-    axes : :class:`~tolomeo._typing.PlotAxes`, optional
+    coords : :class:`~tolomeo._typing.PlotCoords`, optional
         ``"offset"``: offsets from the centre of the projection, in arcmin.
-        ``"radec"``: right ascension and declination, from the WCS of the map.
+        ``"world"``: right ascension and declination, from the WCS of the map.
         ``"pixel"`` is not implemented yet. Defaults to ``"offset"``.
     cmap : str, optional
         Name of a matplotlib colormap, or ``"cmb"`` for the Planck colormap of the CMB.
@@ -137,7 +137,7 @@ def plot_map(
         is. Defaults to ``"median"``.
     xlim, ylim : 2-tuple of float, optional
         Limits of the axes, in arcmin with ``"offset"`` and in pixels with
-        ``"radec"`` (the image is drawn in pixel coordinates). Defaults to ``None``:
+        ``"world"`` (the image is drawn in pixel coordinates). Defaults to ``None``:
         the whole map.
     contour : bool, optional
         Draw contours at 10, 30, 50, 70 and 90 percent of the peak of the pixels
@@ -151,13 +151,15 @@ def plot_map(
     Raises
     ------
     ValueError
-        If ``axes`` is not valid, if ``min_hits_frac`` is not between 0 and 1, or if
+        If ``coords`` is not valid, if ``min_hits_frac`` is not between 0 and 1, or if
         no pixel shown has a finite value.
     NotImplementedError
-        If ``axes`` is ``"pixel"``.
+        If ``coords`` is ``"pixel"``.
     """
-    if axes not in ("offset", "radec", "pixel"):
-        raise ValueError(f"`axes` must be 'offset', 'radec' or 'pixel', got {axes!r}.")
+    if coords not in ("offset", "world", "pixel"):
+        raise ValueError(
+            f"`coords` must be 'offset', 'world' or 'pixel', got {coords!r}."
+        )
 
     if label is None:
         # a BinnedMapResult has no unit
@@ -197,18 +199,18 @@ def plot_map(
     fig = plt.figure(figsize=(6.5, 6.5))
 
     with plt.style.context(STYLE_FILE):
-        if axes == "radec":
+        if coords == "world":
             # WCSAxes: the image is drawn in pixels, the axes show RA and Dec
             ax = fig.add_subplot(projection=geometry.to_wcs())
             extent = None
-        elif axes == "offset":
+        elif coords == "offset":
             # offsets from the projection center, in arcmin; extent takes the outer
             # pixel edges, and the pixelization spans -n * step / 2 to +n * step / 2
             ax = fig.add_subplot()
             half_x = geometry.nx * geometry.pixel_size / 2 / 60
             half_y = geometry.ny * geometry.pixel_size / 2 / 60
             extent = (-half_x, half_x, -half_y, half_y)
-        elif axes == "pixel":
+        elif coords == "pixel":
             raise NotImplementedError()
 
         colormap = _get_cmap(cmap).with_extremes(bad="lightgray")
@@ -240,7 +242,7 @@ def plot_map(
 
         # contours at fractions of the peak of the pixels shown (none if the peak is not
         # positive). Same extent and origin as imshow, so the lines sit on the pixels;
-        # with "radec" both are drawn in pixel coordinates
+        # with "world" both are drawn in pixel coordinates
         if contour:
             peak = np.nanmax(data[good])
             if peak > 0:
@@ -253,7 +255,7 @@ def plot_map(
                     origin="image",
                 )
 
-        if axes == "radec":
+        if coords == "world":
             ax.coords[0].set_axislabel("RA")
             ax.coords[1].set_axislabel("Dec")
             # astropy picks the label syntax from text.usetex at draw time, which is
@@ -266,8 +268,8 @@ def plot_map(
             ax.set_xlabel(r"$\Delta x$ [arcmin]")
             ax.set_ylabel(r"$\Delta y$ [arcmin]")
 
-        # limits in the units of the axes: arcmin for "offset", pixels for "radec" (WCSAxes
-        # draws the image in pixel coordinates)
+        # limits in the units of the axes: arcmin for "offset", pixels for "world"
+        # (WCSAxes draws the image in pixel coordinates)
         if xlim is not None:
             ax.set_xlim(xlim)
         if ylim is not None:

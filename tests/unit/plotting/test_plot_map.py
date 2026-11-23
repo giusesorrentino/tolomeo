@@ -105,9 +105,9 @@ def test_plot_map_explicit_label():
     plt.close(fig)
 
 
-def test_plot_map_offset_axes_extent():
+def test_plot_map_offset_coords_extent():
     # Check that the "offset" axes span the map in arcmin, centred on zero.
-    fig = plot_map(_map_result(), axes="offset")
+    fig = plot_map(_map_result(), coords="offset")
 
     half_x, half_y = NX * 6.0 / 2 / 60, NY * 6.0 / 2 / 60
     extent = fig.axes[0].get_images()[0].get_extent()
@@ -116,8 +116,8 @@ def test_plot_map_offset_axes_extent():
     plt.close(fig)
 
 
-def test_plot_map_radec_axes():
-    fig = plot_map(_map_result(), axes="radec")
+def test_plot_map_world_coords():
+    fig = plot_map(_map_result(), coords="world")
 
     assert isinstance(fig.axes[0], WCSAxes)
 
@@ -191,14 +191,14 @@ def test_plot_map_contours():
     plt.close(fig)
 
 
-def test_plot_map_invalid_axes_raises():
-    with pytest.raises(ValueError, match=r"`axes` must be"):
-        plot_map(_map_result(), axes="galactic")
+def test_plot_map_invalid_coords_raises():
+    with pytest.raises(ValueError, match=r"`coords` must be"):
+        plot_map(_map_result(), coords="galactic")
 
 
-def test_plot_map_pixel_axes_not_implemented():
+def test_plot_map_pixel_coords_not_implemented():
     with pytest.raises(NotImplementedError):
-        plot_map(_map_result(), axes="pixel")
+        plot_map(_map_result(), coords="pixel")
 
     plt.close("all")
 
