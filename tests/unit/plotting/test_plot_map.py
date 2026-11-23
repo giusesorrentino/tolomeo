@@ -124,6 +124,68 @@ def test_plot_map_world_coords():
     plt.close(fig)
 
 
+def test_plot_map_world_coords_of_an_azel_map_raises():
+    # The WCS of an azel map has azimuth and elevation offsets, not RA and Dec.
+    geometry = MapGeometry(
+        nx=NX, ny=NY, pixel_size=6.0, center=(RA0, DEC0), frame="azel"
+    )
+    result = _map_result().model_copy(update={"geometry": geometry})
+
+    with pytest.raises(ValueError, match=r"azel map has no RA and Dec"):
+        plot_map(result, coords="world")
+
+
+def _observed_box():
+    """Hits only in rows 3 to 12 and columns 5 to 15: the pixels shown."""
+    hits = np.zeros((NY, NX), dtype=np.int64)
+    hits[3:13, 5:16] = 10
+    return _map_result(hits=hits)
+
+
+def test_plot_map_crop_offset():
+    # Check that the limits are the outer edges of the pixels shown, in arcmin: the
+    # left edge of pixel i is at (i - n / 2) * 6 arcsec = (i - n / 2) * 0.1 arcmin.
+    fig = plot_map(_observed_box(), coords="offset")
+
+    ax = fig.axes[0]
+    np.testing.assert_allclose(ax.get_xlim(), ((5 - 10) * 0.1, (16 - 10) * 0.1))
+    np.testing.assert_allclose(ax.get_ylim(), ((3 - 8) * 0.1, (13 - 8) * 0.1))
+
+    plt.close(fig)
+
+
+def test_plot_map_crop_world():
+    # In pixels: pixel i spans i - 0.5 to i + 0.5.
+    fig = plot_map(_observed_box(), coords="world")
+
+    ax = fig.axes[0]
+    np.testing.assert_allclose(ax.get_xlim(), (4.5, 15.5))
+    np.testing.assert_allclose(ax.get_ylim(), (2.5, 12.5))
+
+    plt.close(fig)
+
+
+def test_plot_map_crop_keeps_the_limits_given():
+    # A limit given is kept; the other one is cropped.
+    fig = plot_map(_observed_box(), xlim=(-0.9, 0.9))
+
+    ax = fig.axes[0]
+    np.testing.assert_allclose(ax.get_xlim(), (-0.9, 0.9))
+    np.testing.assert_allclose(ax.get_ylim(), (-0.5, 0.5))
+
+    plt.close(fig)
+
+
+def test_plot_map_without_crop_shows_the_whole_map():
+    fig = plot_map(_observed_box(), crop=False)
+
+    ax = fig.axes[0]
+    np.testing.assert_allclose(ax.get_xlim(), (-NX * 0.1 / 2, NX * 0.1 / 2))
+    np.testing.assert_allclose(ax.get_ylim(), (-NY * 0.1 / 2, NY * 0.1 / 2))
+
+    plt.close(fig)
+
+
 def test_plot_map_median_offset():
     # Check that the median of the pixels shown is subtracted by default.
     fig = plot_map(_map_result())

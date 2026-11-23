@@ -93,6 +93,7 @@ def plot_map(
     offset: Literal["median"] | float | None = "median",
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    crop: bool = True,
     contour: bool = False,
 ) -> Figure:
     """
@@ -119,7 +120,8 @@ def plot_map(
         replaces the limit from ``percentiles``. Defaults to ``None``.
     coords : :class:`~tolomeo._typing.PlotCoords`, optional
         ``"offset"``: offsets from the centre of the projection, in arcmin.
-        ``"world"``: right ascension and declination, from the WCS of the map.
+        ``"world"``: right ascension and declination, from the WCS of the map; only
+        for a map in the ``"radec"`` frame (``"offset"`` for an ``"azel"`` one).
         ``"pixel"`` is not implemented yet. Defaults to ``"offset"``.
     cmap : str, optional
         Name of a matplotlib colormap, or ``"cmb"`` for the Planck colormap of the CMB.
@@ -137,8 +139,13 @@ def plot_map(
         is. Defaults to ``"median"``.
     xlim, ylim : 2-tuple of float, optional
         Limits of the axes, in arcmin with ``"offset"`` and in pixels with
-        ``"world"`` (the image is drawn in pixel coordinates). Defaults to ``None``:
-        the whole map.
+        ``"world"`` (the image is drawn in pixel coordinates). A limit given here is
+        kept also with ``crop``. Defaults to ``None``: the whole map, or the box of
+        ``crop``.
+    crop : bool, optional
+        Set the limits not given in ``xlim`` and ``ylim`` to the smallest box that
+        holds all the pixels shown, so that no grey border is left on its four sides;
+        the rounded corners of the observed area stay grey. Defaults to ``True``.
     contour : bool, optional
         Draw contours at 10, 30, 50, 70 and 90 percent of the peak of the pixels
         shown; none if the peak is not positive. Defaults to ``False``.
@@ -151,14 +158,22 @@ def plot_map(
     Raises
     ------
     ValueError
-        If ``coords`` is not valid, if ``min_hits_frac`` is not between 0 and 1, or if
-        no pixel shown has a finite value.
+        If ``coords`` is not valid or is ``"world"`` for a map in the ``"azel"``
+        frame, if ``min_hits_frac`` is not between 0 and 1, or if no pixel shown has a
+        finite value.
     NotImplementedError
         If ``coords`` is ``"pixel"``.
     """
     if coords not in ("offset", "world", "pixel"):
         raise ValueError(
             f"`coords` must be 'offset', 'world' or 'pixel', got {coords!r}."
+        )
+
+    # the WCS of an azel map has linear axes (azimuth and elevation offsets), not RA
+    # and Dec
+    if coords == "world" and result.geometry.frame == "azel":
+        raise ValueError(
+            "An azel map has no RA and Dec: use coords='offset' instead of 'world'."
         )
 
     if label is None:
@@ -269,7 +284,33 @@ def plot_map(
             ax.set_ylabel(r"$\Delta y$ [arcmin]")
 
         # limits in the units of the axes: arcmin for "offset", pixels for "world"
-        # (WCSAxes draws the image in pixel coordinates)
+        # (WCSAxes draws the image in pixel coordinates). With crop, a limit not given
+        # is the box of the pixels shown, at their outer edges
+        if crop:
+            # (row, column) = (iy, ix) of every pixel shown: finite after `good`
+            shown = np.argwhere(np.isfinite(data))
+            iy_min, ix_min = shown.min(axis=0)
+            iy_max, ix_max = shown.max(axis=0)
+
+            if coords == "world":
+                # pixel i spans i - 0.5 to i + 0.5
+                crop_x = (ix_min - 0.5, ix_max + 0.5)
+                crop_y = (iy_min - 0.5, iy_max + 0.5)
+            else:
+                # the left edge of pixel i is at (i - n / 2) * pixel_size
+                step = geometry.pixel_size / 60  # arcmin
+                crop_x = (
+                    (ix_min - geometry.nx / 2) * step,
+                    (ix_max + 1 - geometry.nx / 2) * step,
+                )
+                crop_y = (
+                    (iy_min - geometry.ny / 2) * step,
+                    (iy_max + 1 - geometry.ny / 2) * step,
+                )
+
+            xlim = crop_x if xlim is None else xlim
+            ylim = crop_y if ylim is None else ylim
+
         if xlim is not None:
             ax.set_xlim(xlim)
         if ylim is not None:
