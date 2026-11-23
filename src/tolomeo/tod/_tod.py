@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import astropy.units as u
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
+
+from .._lib.units import _conversion_factor
+
+__all__ = ["TimeOrderedData"]
 
 
 class TimeOrderedData(BaseModel):
@@ -81,3 +86,57 @@ class TimeOrderedData(BaseModel):
             self.time * 86400, axis=0
         )  # remember that time is in MJD, so we convert to seconds
         return 1 / np.median(dt)
+
+    def to(
+        self,
+        unit: str | u.UnitBase,
+        *,
+        frequency: float | str | u.Quantity = 90.0,
+        beam_fwhm: float | str | u.Quantity = 12.0,
+    ) -> TimeOrderedData:
+        """
+        The same TOD in another unit.
+
+        ``signal`` is multiplied by the conversion factor; the other fields do not
+        change. Between a temperature and a flux density per beam (``"Jy/beam"``) the
+        conversion is the Rayleigh-Jeans one, at ``frequency`` and for a Gaussian beam
+        of FWHM ``beam_fwhm`` (see Notes); they are not used for the other units. A
+        TOD in ``rad``, the phase of the KIDs, becomes a temperature with
+        :func:`~tolomeo.processing.calibrate`, not with this method.
+
+        Parameters
+        ----------
+        unit : str or :class:`~astropy.units.UnitBase`
+            The new unit, for example ``"mK"``, ``"uK"`` or ``"mJy/beam"``. A string is
+            read as a FITS unit string.
+        frequency : float, str or :class:`~astropy.units.Quantity`, optional
+            Frequency of the conversion to or from ``Jy/beam``. A number is in GHz.
+            Defaults to ``90``.
+        beam_fwhm : float, str or :class:`~astropy.units.Quantity`, optional
+            FWHM of the beam of the instrument, for the conversion to or from
+            ``Jy/beam``. A number is in arcsec. Defaults to ``12``.
+
+        Returns
+        -------
+        :class:`~tolomeo.tod.TimeOrderedData`
+            A copy with the new ``signal`` and ``unit``, the last one in the FITS
+            syntax (``"Jy beam-1"`` for ``"Jy/beam"``). The other arrays are shared
+            with this TOD, not copied.
+
+        Raises
+        ------
+        ValueError
+            If the unit of this TOD is not known (None), if ``unit`` is not a FITS
+            unit, if the two units cannot be converted into each other (as ``rad``
+            and ``K``), or if ``frequency`` or ``beam_fwhm`` is not positive.
+
+        Notes
+        -----
+        The conversion to and from ``Jy/beam`` is the one of
+        :meth:`MapResult.to <tolomeo.map.MapResult.to>`: see its Notes for the formula
+        and for a TOD in :math:`T_A^*`.
+        """
+        factor, unit = _conversion_factor(
+            self.unit, unit, frequency=frequency, beam_fwhm=beam_fwhm
+        )
+        return self.model_copy(update={"signal": factor * self.signal, "unit": unit})

@@ -5,7 +5,7 @@ import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
-from .._lib.units import _to_unit
+from .._lib.units import _conversion_factor
 from .._typing import Solver
 from ._geometry import MapGeometry
 
@@ -143,41 +143,14 @@ class MapResult(BaseModel):
         :math:`\eta_\mathrm{mb}\, T`: its flux densities would come out lower by the
         main-beam efficiency :math:`\eta_\mathrm{mb}`.
         """
-        if self.unit is None:
-            raise ValueError(
-                "The unit of the map is not known (None): it cannot be converted."
-            )
-        source = u.Unit(self.unit, format="fits")
-        target = u.Unit(unit, format="fits")
-
-        frequency = _to_unit(frequency, u.GHz)
-        beam_fwhm = _to_unit(beam_fwhm, u.arcsec)
-        if frequency <= 0 or beam_fwhm <= 0:
-            raise ValueError(
-                "`frequency` and `beam_fwhm` must be positive, got "
-                f"{frequency} GHz and {beam_fwhm} arcsec."
-            )
-
-        # the beam enters only between a temperature and a flux density per beam:
-        # without it, "K" to "Jy" is refused instead of giving Jy per beam
-        equivalencies = []
-        per_beam = u.Jy / u.beam
-        if source.is_equivalent(per_beam) or target.is_equivalent(per_beam):
-            omega = np.pi * (beam_fwhm * u.arcsec) ** 2 / (4 * np.log(2))
-            equivalencies = u.brightness_temperature(
-                frequency * u.GHz, beam_area=omega.to(u.sr)
-            )
-
-        factor = source.to(target, equivalencies=equivalencies)
+        factor, unit = _conversion_factor(
+            self.unit, unit, frequency=frequency, beam_fwhm=beam_fwhm
+        )
 
         # new arrays: the copy shares with this map the fields that are not updated
         weights = None if self.weights is None else self.weights / factor**2
         return self.model_copy(
-            update={
-                "image": factor * self.image,
-                "weights": weights,
-                "unit": target.to_string("fits"),
-            }
+            update={"image": factor * self.image, "weights": weights, "unit": unit}
         )
 
 

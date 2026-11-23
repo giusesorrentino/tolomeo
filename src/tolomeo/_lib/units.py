@@ -14,6 +14,7 @@ happens when the model is built and the attribute is always a plain ``float`` in
 implicit unit. A function that is not a model calls :func:`_to_unit`.
 """
 
+import math
 import numbers
 from typing import Annotated, Any
 
@@ -93,6 +94,84 @@ def _is_temperature(unit: str | None) -> bool:
         return u.Unit(unit, format="fits").physical_type == "temperature"
     except ValueError:
         return False
+
+
+def _conversion_factor(
+    unit: str | None,
+    target: str | u.UnitBase,
+    *,
+    frequency: Any,
+    beam_fwhm: Any,
+) -> tuple[float, str]:
+    r"""
+    Factor from ``unit`` to ``target``, and ``target`` as a FITS unit string.
+
+    The common part of the ``to`` methods (:meth:`tolomeo.map.MapResult.to`,
+    :meth:`tolomeo.tod.TimeOrderedData.to`), which multiply their data by the factor.
+    Between a temperature and a flux density per beam (``"Jy/beam"``) the conversion
+    is the Rayleigh-Jeans one, at ``frequency`` and for a Gaussian beam of FWHM
+    :math:`\theta`, of solid angle :math:`\pi \theta^2 / (4 \ln 2)`; for the other
+    units ``frequency`` and ``beam_fwhm`` are not used.
+
+    Parameters
+    ----------
+    unit : str or None
+        Unit of the data, a FITS unit string; None if it is not known.
+    target : str or :class:`~astropy.units.UnitBase`
+        The new unit. A string is read as a FITS unit string.
+    frequency : float, str or :class:`~astropy.units.Quantity`
+        Frequency of the conversion to or from ``Jy/beam``. A number is in GHz.
+    beam_fwhm : float, str or :class:`~astropy.units.Quantity`
+        FWHM of the beam, for the conversion to or from ``Jy/beam``. A number is in
+        arcsec.
+
+    Returns
+    -------
+    factor : float
+        The value in ``target`` of one ``unit``.
+    target : str
+        ``target`` in the FITS syntax (``"Jy beam-1"`` for ``"Jy/beam"``).
+
+    Raises
+    ------
+    ValueError
+        If ``unit`` is None, if a unit is not a FITS unit, if ``frequency`` or
+        ``beam_fwhm`` is not positive, if ``unit`` is an angle (the phase of the KIDs)
+        and ``target`` is not, or if the two units cannot be converted into each
+        other.
+    """
+    if unit is None:
+        raise ValueError("The unit is not known (None): it cannot be converted.")
+    source = u.Unit(unit, format="fits")
+    new = u.Unit(target, format="fits")
+
+    frequency = _to_unit(frequency, u.GHz)
+    beam_fwhm = _to_unit(beam_fwhm, u.arcsec)
+    if frequency <= 0 or beam_fwhm <= 0:
+        raise ValueError(
+            "`frequency` and `beam_fwhm` must be positive, got "
+            f"{frequency} GHz and {beam_fwhm} arcsec."
+        )
+
+    # a phase is not a temperature: the responsivity of each detector converts it
+    if source.is_equivalent(u.rad) and not new.is_equivalent(u.rad):
+        raise ValueError(
+            f"The unit is {unit!r}, the phase of the KIDs: "
+            "tolomeo.processing.calibrate converts a TOD to a temperature."
+        )
+
+    # the beam enters only between a temperature and a flux density per beam:
+    # without it, "K" to "Jy" is refused instead of giving Jy per beam
+    equivalencies = []
+    per_beam = u.Jy / u.beam
+    if source.is_equivalent(per_beam) or new.is_equivalent(per_beam):
+        omega = math.pi * (beam_fwhm * u.arcsec) ** 2 / (4 * math.log(2))
+        equivalencies = u.brightness_temperature(
+            frequency * u.GHz, beam_area=omega.to(u.sr)
+        )
+
+    factor = source.to(new, equivalencies=equivalencies)
+    return float(factor), new.to_string("fits")
 
 
 def _converter(unit: u.UnitBase) -> BeforeValidator:

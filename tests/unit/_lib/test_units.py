@@ -10,6 +10,7 @@ from tolomeo._lib.units import (
     Degrees,
     Hz,
     Kelvin,
+    _conversion_factor,
     _is_temperature,
     _to_unit,
 )
@@ -135,3 +136,43 @@ def test_aliases_wrong_unit_raises():
 )
 def test_is_temperature(unit, expected):
     assert _is_temperature(unit) is expected
+
+
+# -----------------------------------------------------------------------------
+# _conversion_factor
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("unit", "target", "factor", "fits"),
+    [
+        ("K", "mK", 1000.0, "mK"),
+        ("mK", u.K, 1e-3, "K"),
+        ("rad", "mrad", 1000.0, "mrad"),  # a phase can change its angular unit
+        ("K", "Jy/beam", 0.954, "Jy beam-1"),  # 90 GHz and a FWHM of 12 arcsec
+        ("Jy/beam", "K", 1 / 0.954, "K"),
+    ],
+)
+def test_conversion_factor(unit, target, factor, fits):
+    result = _conversion_factor(unit, target, frequency=90.0, beam_fwhm=12.0)
+
+    assert result[0] == pytest.approx(factor, rel=1e-3)
+    assert result[1] == fits
+
+
+@pytest.mark.parametrize(
+    ("unit", "target", "kwargs", "match"),
+    [
+        (None, "mK", {}, "not known"),
+        ("K", "blah", {}, "did not parse"),
+        ("K", "s", {}, "not convertible"),
+        ("K", "Jy", {}, "not convertible"),  # a flux density is per beam
+        ("rad", "K", {}, "calibrate"),
+        ("K", "Jy/beam", {"frequency": 0.0}, "must be positive"),
+        ("K", "Jy/beam", {"beam_fwhm": "-12 arcsec"}, "must be positive"),
+    ],
+)
+def test_conversion_factor_invalid_raises(unit, target, kwargs, match):
+    arguments = {"frequency": 90.0, "beam_fwhm": 12.0} | kwargs
+    with pytest.raises(ValueError, match=match):
+        _conversion_factor(unit, target, **arguments)

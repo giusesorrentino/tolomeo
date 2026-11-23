@@ -127,3 +127,24 @@ def test_scan_speed_no_valid_subscan_raises():
 
     with pytest.raises(ValueError, match=r"No valid subscan"):
         _ = scan.scan_speed
+
+
+# -----------------------------------------------------------------------------
+# Scan.to
+# -----------------------------------------------------------------------------
+
+
+def test_scan_to_converts_the_tod():
+    # Check that the result is a scan with the TOD of TimeOrderedData.to, and the
+    # pointing of this one.
+    scan = make_scan()
+    scan = scan.model_copy(update={"tod": scan.tod.model_copy(update={"unit": "K"})})
+
+    converted = scan.to("mJy/beam", frequency=150.0, beam_fwhm="18 arcsec")
+
+    expected = scan.tod.to("mJy/beam", frequency=150.0, beam_fwhm="18 arcsec")
+    np.testing.assert_array_equal(converted.tod.signal, expected.signal)
+    assert converted.tod.unit == expected.unit == "mJy beam-1"
+    assert converted.coordinates is scan.coordinates
+    assert converted.channel_ids == scan.channel_ids
+    assert scan.tod.unit == "K"

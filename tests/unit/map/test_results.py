@@ -150,6 +150,7 @@ def test_map_result_from_jy_per_beam():
         ("K", "blah", "did not parse"),
         ("K", "Jy", "not convertible"),  # a flux density of a map is per beam
         ("K", "s", "not convertible"),
+        ("rad", "K", "calibrate"),  # a map of a TOD that was not calibrated
     ],
 )
 def test_map_result_to_invalid_raises(unit, target, match):

@@ -87,3 +87,60 @@ def test_select_non_boolean_mask_raises():
 def test_select_wrong_shape_raises():
     with pytest.raises(ValueError):
         _tod().select(np.ones(9, dtype=bool))
+
+
+# -----------------------------------------------------------------------------
+# to
+# -----------------------------------------------------------------------------
+
+
+def _tod_in(unit):
+    return _tod().model_copy(update={"unit": unit})
+
+
+def test_tod_to_mk():
+    # Check that only the signal is multiplied, the other arrays are shared, and the
+    # original TOD does not change.
+    tod = _tod_in("K")
+
+    converted = tod.to("mK")
+
+    np.testing.assert_allclose(converted.signal, 1000 * tod.signal)
+    assert converted.unit == "mK"
+    assert converted.time is tod.time
+    assert converted.flags is tod.flags
+    assert tod.unit == "K"
+    np.testing.assert_array_equal(tod.signal, _tod().signal)
+
+
+def test_tod_to_jy_per_beam():
+    # 1 K is 0.954 Jy/beam at 90 GHz with a FWHM of 12 arcsec, as the docstring says.
+    converted = _tod_in("K").to("Jy/beam")
+
+    np.testing.assert_allclose(converted.signal, 0.954 * _tod().signal, rtol=1e-3)
+    assert converted.unit == "Jy beam-1"
+
+
+@pytest.mark.parametrize(
+    ("unit", "target", "match"),
+    [
+        (None, "mK", "not known"),
+        ("K", "blah", "did not parse"),
+        ("K", "s", "not convertible"),
+        ("rad", "K", "calibrate"),
+    ],
+)
+def test_tod_to_invalid_raises(unit, target, match):
+    with pytest.raises(ValueError, match=match):
+        _tod_in(unit).to(target)
+
+
+def test_tod_to_mrad():
+    # A phase can still change its angular unit.
+    np.testing.assert_allclose(_tod().to("mrad").signal, 1000 * _tod().signal)
+
+
+@pytest.mark.parametrize("kwargs", [{"frequency": 0.0}, {"beam_fwhm": "-12 arcsec"}])
+def test_tod_to_non_positive_beam_raises(kwargs):
+    with pytest.raises(ValueError, match="must be positive"):
+        _tod_in("K").to("mJy/beam", **kwargs)

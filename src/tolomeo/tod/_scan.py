@@ -3,6 +3,7 @@ from __future__ import annotations
 from itertools import pairwise
 from pathlib import Path
 
+import astropy.units as u
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -158,3 +159,46 @@ class Scan(BaseModel):
 
         speed = np.concatenate(speed)
         return np.median(speed) * _RADIAN_TO_ARCMIN
+
+    def to(
+        self,
+        unit: str | u.UnitBase,
+        *,
+        frequency: float | str | u.Quantity = 90.0,
+        beam_fwhm: float | str | u.Quantity = 12.0,
+    ) -> Scan:
+        """
+        The same scan with its TOD in another unit.
+
+        :meth:`TimeOrderedData.to <tolomeo.tod.TimeOrderedData.to>` on ``tod``, with
+        the same arguments; the coordinates and the offsets are shared with this scan,
+        not copied. Convert the scan before
+        :func:`~tolomeo.mapmaking.estimate_inverse_noise`: the map of
+        :func:`~tolomeo.mapmaking.gls_map` does not depend on the unit of the noise
+        model, but ``lag_zero``, and so the weights of the map, are an inverse
+        variance in the unit of the scan the model was estimated on.
+
+        Parameters
+        ----------
+        unit : str or :class:`~astropy.units.UnitBase`
+            The new unit, for example ``"mK"`` or ``"mJy/beam"``. A string is read as a
+            FITS unit string.
+        frequency : float, str or :class:`~astropy.units.Quantity`, optional
+            Frequency of the conversion to or from ``Jy/beam``. A number is in GHz.
+            Defaults to ``90``.
+        beam_fwhm : float, str or :class:`~astropy.units.Quantity`, optional
+            FWHM of the beam of the instrument, for the conversion to or from
+            ``Jy/beam``. A number is in arcsec. Defaults to ``12``.
+
+        Returns
+        -------
+        :class:`~tolomeo.tod.Scan`
+            A copy with the converted TOD.
+
+        Raises
+        ------
+        ValueError
+            As :meth:`TimeOrderedData.to <tolomeo.tod.TimeOrderedData.to>`.
+        """
+        tod = self.tod.to(unit, frequency=frequency, beam_fwhm=beam_fwhm)
+        return self.model_copy(update={"tod": tod})
