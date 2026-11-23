@@ -14,7 +14,9 @@ rng = np.random.default_rng(3)
 NX, NY = 6, 4
 
 
-def _map_result(frame="radec", projection="sin", weights=True, unit="K"):
+def _map_result(
+    frame="radec", projection="sin", weights=True, unit="K", source_name=None
+):
     """
     A MapResult with random maps on a small grid. The solver is ``"minres"``, not the
     default of ``gls_map``, so that a reader that ignores ``SOLVER`` shows up.
@@ -37,6 +39,7 @@ def _map_result(frame="radec", projection="sin", weights=True, unit="K"):
         weights=rng.random((NY, NX)) if weights else None,
         converged=False,
         unit=unit,
+        source_name=source_name,
     )
 
 
@@ -52,6 +55,7 @@ def _assert_same_map(read, result):
     assert read.converged == result.converged
     assert read.solver == result.solver
     assert read.unit == result.unit
+    assert read.source_name == result.source_name
 
     geometry, expected = read.geometry, result.geometry
     assert (geometry.nx, geometry.ny) == (expected.nx, expected.ny)
@@ -122,6 +126,26 @@ def test_map_round_trip_converted_unit(tmp_path):
     read = read_map(path)
     _assert_same_map(read, result)
     assert read.unit == "mJy beam-1"
+
+
+def test_map_round_trip_source_name(tmp_path):
+    # Check that the source is written as OBJECT in every image HDU and read back.
+    result = _map_result(source_name="CRAB")
+    path = tmp_path / "map.fits"
+
+    write_map(result, path)
+
+    with fits.open(path) as hdul:
+        assert all(hdu.header["OBJECT"] == "CRAB" for hdu in hdul[:3])
+    _assert_same_map(read_map(path), result)
+
+
+def test_write_map_extra_header_replaces_object(tmp_path):
+    path = tmp_path / "map.fits"
+
+    write_map(_map_result(source_name="CRAB"), path, extra_header={"OBJECT": "M1"})
+
+    assert fits.getheader(path, 0)["OBJECT"] == "M1"
 
 
 def test_write_map_header_and_extensions(tmp_path):

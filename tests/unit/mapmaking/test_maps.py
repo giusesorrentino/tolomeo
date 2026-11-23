@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tests.common import DEC0, PIXEL_SIZE, RA0, make_scan, with_signal
+from tests.common import DEC0, PIXEL_SIZE, RA0, SOURCE_NAME, make_scan, with_signal
 from tolomeo.map import MapGeometry
 from tolomeo.mapmaking import InverseNoise, binned_map, estimate_inverse_noise, gls_map
 from tolomeo.mapmaking._pointing import _pointing_matrix
@@ -179,6 +179,15 @@ def test_gls_map_cg_and_minres_give_the_same_map(residual_norm):
     np.testing.assert_allclose(
         minres.image, cg.image, rtol=0, atol=1e-6 * np.abs(cg.image).max()
     )
+
+
+def test_gls_map_source_name():
+    # The map takes the name of the source from the headers of the scan.
+    scan = make_scan()
+
+    result = gls_map(scan, GEOMETRY, _white_inverse_noise(scan))
+
+    assert result.source_name == scan.coordinates.source_name == SOURCE_NAME
 
 
 def test_gls_map_unit_of_a_raw_scan():

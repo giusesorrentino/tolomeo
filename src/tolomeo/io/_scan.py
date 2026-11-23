@@ -24,6 +24,10 @@ _ARCSEC_TO_RAD = np.pi / (180 * 3600)
 # name of a detector column of the PH TABLE: chp_ and the id of the detector
 _CHANNEL_COLUMN = re.compile(r"chp_\d+")
 
+# end of the SOURCE of a MISTRAL scan that is not the name of the source: the direction
+# of the scan (A1995_RA, 3C84_EL) and the offsets of the focus (MARS_AZ_TY0_TZ0)
+_SCAN_SUFFIX = re.compile(r"(?:_(?:RA|DEC|AZ|EL))?(?:_T[YZ]-?[\d.]+)*$", re.IGNORECASE)
+
 
 class SubScan(NamedTuple):
     """
@@ -220,9 +224,25 @@ def _good_channels(
 
 
 def _source_name(subscans: list[SubScan]) -> str | None:
-    """Names of the sources in the headers, joined by commas; None if none."""
-    names = sorted({s.source_name for s in subscans if s.source_name})
+    """
+    Names of the sources in the headers (see :func:`_object_name`), joined by commas.
+
+    None if no header has a name.
+    """
+    names = sorted({_object_name(s.source_name) for s in subscans if s.source_name})
     return ", ".join(names) if names else None
+
+
+def _object_name(source: str) -> str:
+    """
+    Name of the source in the ``SOURCE`` of a MISTRAL scan.
+
+    The direction of the scan and the offsets of the focus are removed:
+    ``"A1995_RA"`` and ``"MARS_AZ_TY0_TZ0"`` give ``"A1995"`` and ``"MARS"``, so the
+    scans of the same source have the same name. A name with nothing else is kept as
+    it is.
+    """
+    return _SCAN_SUFFIX.sub("", source, count=1) or source
 
 
 def _read_channel_ids(file: Path) -> NDArray[np.int64]:

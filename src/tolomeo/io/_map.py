@@ -31,7 +31,8 @@ def write_map(
     Write a map, its hit count and its weights to a FITS file.
 
     * Primary HDU (``EXTNAME = "SCI"``): ``result.image`` with the WCS of
-      ``result.geometry`` and the keywords ``BUNIT`` (if ``result.unit`` is known),
+      ``result.geometry`` and the keywords ``OBJECT`` (``result.source_name``, if
+      known, also in the other image HDUs), ``BUNIT`` (if ``result.unit`` is known),
       ``NITER``, ``RESID``, ``CONVERGD``, ``SOLVER``, ``TOLOMEO`` (version of the
       package), those of ``extra_header``, and ``FRAME``, ``OBSRA``, ``OBSDEC`` and
       ``PROJ`` (frame, centre in degrees and projection of the geometry, which
@@ -50,8 +51,9 @@ def write_map(
         Output file; it must end with a FITS suffix (``.fits``, ``.fit``, ``.fts``,
         optionally ``.gz``).
     extra_header : dict, optional
-        More header keywords (for example ``{"OBJECT": "Jupiter"}``), added to the
-        image HDUs (``SCI``, ``HITS`` and ``WEIGHTS``).
+        More header keywords, added to the image HDUs (``SCI``, ``HITS`` and
+        ``WEIGHTS``) after ``OBJECT``: ``{"OBJECT": "Jupiter"}`` replaces the name of
+        the source.
     config : str, optional
         Text that says how the map was made, for example the YAML file of the run. It
         is stored line by line, so that the FITS file is enough to know it. Characters
@@ -63,8 +65,11 @@ def write_map(
     check_fits_suffix(Path(path))
     geometry = result.geometry
 
-    # header shared by the image HDUs: the WCS and the keywords of the caller
+    # header shared by the image HDUs: the WCS, the source and the keywords of the
+    # caller, which can replace OBJECT
     base = geometry.to_wcs().to_header()
+    if result.source_name is not None:
+        base["OBJECT"] = (result.source_name, "Observed source")
     base.update(extra_header or {})
 
     # what read_map needs to rebuild the geometry: the WCS of an azel map has neither
@@ -131,9 +136,10 @@ def read_map(path: str | Path) -> MapResult:
         projection from ``CRVAL1``, ``CRVAL2`` and ``CTYPE1`` for ``"radec"``, from
         ``OBSRA``, ``OBSDEC`` and ``PROJ`` for ``"azel"``. A file without ``FRAME``,
         written before it existed, is read as ``"radec"``. ``weights``, ``converged``,
-        ``solver`` and ``unit`` come from the ``"WEIGHTS"`` extension and the keywords
-        ``CONVERGD``, ``SOLVER`` and ``BUNIT``; a file written before they existed
-        gives None, True, ``"cg"`` (the only solver there was) and None.
+        ``solver``, ``unit`` and ``source_name`` come from the ``"WEIGHTS"`` extension
+        and the keywords ``CONVERGD``, ``SOLVER``, ``BUNIT`` and ``OBJECT``; a file
+        without them gives None, True, ``"cg"`` (the only solver there was), None and
+        None.
 
     Notes
     -----
@@ -194,4 +200,5 @@ def read_map(path: str | Path) -> MapResult:
             converged=bool(header.get("CONVERGD", True)),
             solver=header.get("SOLVER", "cg"),
             unit=header.get("BUNIT"),
+            source_name=header.get("OBJECT"),
         )

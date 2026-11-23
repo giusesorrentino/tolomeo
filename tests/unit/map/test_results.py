@@ -34,6 +34,7 @@ def test_map_result_defaults():
     assert result.weights is None
     assert result.converged
     assert result.unit is None
+    assert result.source_name is None
 
 
 @pytest.mark.parametrize("name", ["image", "hits", "weights"])

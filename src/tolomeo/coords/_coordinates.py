@@ -37,8 +37,9 @@ class Coordinates(BaseModel):
         next for a planet. None if it is not known (a scan built by hand).
         Shape: ``(n_samples,)``.
     source_name : str or None
-        Name of the source, as written in the ``SOURCE`` keyword of the header of
-        the FITS subscans (for example ``"MARS"``). None if it is not known.
+        Name of the source, from the ``SOURCE`` keyword of the header of the FITS
+        subscans without the direction of the scan and the offsets of the focus
+        (``"MARS_AZ_TY0_TZ0"`` is ``"MARS"``). None if it is not known.
 
     Notes
     -----

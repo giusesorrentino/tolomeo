@@ -15,6 +15,7 @@ from tests.common import (
 )
 from tolomeo.beammap import ChannelFlag
 from tolomeo.io import read_beammap, read_scan
+from tolomeo.io._scan import _object_name
 from tolomeo.tod import ScanSpec
 
 # small scans: every call of read_scan starts a pool of processes
@@ -201,6 +202,41 @@ def test_read_scan_source_name_from_the_header(tmp_path):
     read = read_scan(tod_dir, beammap)
 
     assert read.coordinates.source_name == SOURCE_NAME
+
+
+def test_read_scan_same_source_in_two_directions(tmp_path):
+    # Check that the scans of a source in RA and Dec give one name.
+    names = ["CYG_A_RA", "CYG_A_DEC"]
+    dirs = []
+    for k, name in enumerate(names):
+        scan = _scan(seed=k)
+        coords = scan.coordinates.model_copy(update={"source_name": name})
+        tod_dir, beammap = write_scan_dir(
+            tmp_path / name, scan.model_copy(update={"coordinates": coords})
+        )
+        dirs.append(tod_dir)
+
+    read = read_scan(dirs, beammap)
+
+    assert read.coordinates.source_name == "CYG_A"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("A1995_RA", "A1995"),
+        ("CYG_A_DEC", "CYG_A"),  # the name itself has an underscore
+        ("3C84_el", "3C84"),
+        ("MARS_AZ_TY0_TZ0", "MARS"),
+        ("MARS_EL_TY-3_TZ-1.3", "MARS"),
+        ("JUPITER_TY-2.5_TZ-7", "JUPITER"),
+        ("3C84_TESTFOLDER", "3C84_TESTFOLDER"),
+        ("FAKE", "FAKE"),
+        ("_EL", "_EL"),  # nothing else: kept as it is
+    ],
+)
+def test_object_name(source, expected):
+    assert _object_name(source) == expected
 
 
 def test_read_scan_header_without_source_name(tmp_path):

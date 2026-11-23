@@ -65,8 +65,8 @@ Example::
     output:
       path: jupiter.fits             # FITS map (SCI) and hits (HITS)
       overwrite: false
-      header:                        # more FITS keywords
-        OBJECT: Jupiter
+      header:                        # more FITS keywords. OBJECT is the SOURCE of the
+        OBJECT: Jupiter              #   FITS files: set it only to replace it
       plot: jupiter.png              # optional
 
 Every relative path of the file is relative to the folder of the YAML file, not to the

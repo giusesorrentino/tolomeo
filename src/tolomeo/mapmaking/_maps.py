@@ -317,6 +317,7 @@ def gls_map(
         converged=converged,
         unit=scan.tod.unit,
         solver=solver,
+        source_name=scan.coordinates.source_name,
     )
 
 

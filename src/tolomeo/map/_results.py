@@ -49,6 +49,11 @@ class MapResult(BaseModel):
     unit : str, optional
         Unit of ``image``, as a FITS unit string (``"K"`` for a calibrated scan). None
         means not known: the raw units of the instrument.
+    source_name : str, optional
+        Name of the observed source, ``scan.coordinates.source_name``: the ``SOURCE``
+        keyword of the FITS files without the direction of the scan.
+        :func:`~tolomeo.io.write_map` writes it as ``OBJECT``. None if it is not
+        known. Defaults to ``None``.
     """
 
     # numpy arrays are not pydantic types: they are only checked with isinstance
@@ -63,6 +68,7 @@ class MapResult(BaseModel):
     weights: NDArray[np.float64] | None = None
     converged: bool = True
     unit: str | None = None
+    source_name: str | None = None
 
     def model_post_init(self, context: Any, /) -> None:
         """Raise ``ValueError`` if ``image``, ``hits`` or ``weights`` is not ``(ny, nx)``."""
