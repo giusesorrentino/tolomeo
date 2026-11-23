@@ -105,6 +105,7 @@ def test_gls_config_invalid_value_raises(kwargs):
 def test_calibration_config_temperature_in_kelvin(tmp_path):
     config = CalibrationConfig(skydip_dir=tmp_path, T_atm="300 K")
 
+    assert config.skydip_dir == [tmp_path]  # a single path becomes a list of one
     assert config.T_atm == 300.0
     assert config.tau_atm == 0.16
     assert config.correct_opacity
@@ -199,6 +200,29 @@ def test_from_yaml_automatic_size_with_center(tmp_path):
     assert config.geometry == expected
 
 
+def test_from_yaml_several_skydip_dirs(tmp_path):
+    # Check that a list of skydip directories and files is resolved against the folder
+    # of the YAML file.
+    text = RUN_YAML + "calibration:\n  skydip_dir:\n    - cal\n    - more/skydip.fits\n"
+
+    config = RunConfig.from_yaml(write_run(tmp_path, text))
+
+    assert config.calibration.skydip_dir == [
+        (tmp_path / "cal").resolve(),
+        (tmp_path / "more" / "skydip.fits").resolve(),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("value", "match"), [("[]", "is empty"), ("\n    - cal\n    -", "must be a path")]
+)
+def test_from_yaml_invalid_skydip_dir_raises(tmp_path, value, match):
+    text = RUN_YAML + f"calibration:\n  skydip_dir: {value}\n"
+
+    with pytest.raises(ValueError, match=match):
+        RunConfig.from_yaml(write_run(tmp_path, text))
+
+
 def test_from_yaml_sections(tmp_path):
     text = (
         "scan:\n"
@@ -224,7 +248,7 @@ def test_from_yaml_sections(tmp_path):
 
     config = RunConfig.from_yaml(write_run(tmp_path, text))
 
-    assert config.calibration.skydip_dir == (tmp_path / "cal").resolve()
+    assert config.calibration.skydip_dir == [(tmp_path / "cal").resolve()]
     assert config.calibration.T_atm == 270.0
     assert config.filtering.steps[0].deg == 2
     assert config.gls.tol == 1e-5

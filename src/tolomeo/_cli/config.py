@@ -25,7 +25,9 @@ Example::
       center: auto                   # auto = the FITS headers, or [ra, dec] in degrees
 
     calibration:                     # optional, applied before `filtering`
-      skydip_dir: ~/Developer/ROMA_DATA/JUPITER/CAL   # the GAIN_CAL FITS files, or a single FITS file
+      skydip_dir:                    # GAIN_CAL directories, single FITS files or both,
+        - ~/Developer/ROMA_DATA/JUPITER/CAL  # of the same night; one path without the
+                                     #   list is also accepted
       T_atm: 267.0                   # K
       tau_atm: 0.16                  # zenith opacity
       correct_opacity: true          # also divide by exp(-tau_atm * airmass)
@@ -197,8 +199,11 @@ class CalibrationConfig(BaseModel):
 
     Attributes
     ----------
-    skydip_dir : :class:`~pathlib.Path`
-        Directory with the ``GAIN_CAL`` FITS files, or the path of a single FITS file.
+    skydip_dir : list of :class:`~pathlib.Path`
+        Directories with the ``GAIN_CAL`` FITS files, single FITS files, or both (see
+        ``read_skydip``); a single path becomes a list of one. They should come from
+        the same night: the responsivity is the median over all their skydips, and it
+        changes by tens of percent from one night to another.
     T_atm : float
         Temperature of the atmosphere. A number is in kelvin; ``"267 K"`` or an
         :class:`~astropy.units.Quantity` is converted to kelvin. Defaults to ``267``.
@@ -212,10 +217,16 @@ class CalibrationConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    skydip_dir: Path
+    skydip_dir: list[Path] = Field(min_length=1)
     T_atm: Kelvin = Field(default=267.0, gt=0)  # implicit unit: kelvin
     tau_atm: float = Field(default=0.16, ge=0)
     correct_opacity: bool = True
+
+    @field_validator("skydip_dir", mode="before")
+    @classmethod
+    def _one_or_more(cls, skydip_dir: Any) -> Any:
+        """Turn a single path into a list of one."""
+        return skydip_dir if isinstance(skydip_dir, list | tuple) else [skydip_dir]
 
 
 class OutputConfig(BaseModel):
@@ -324,12 +335,27 @@ class RunConfig(BaseModel):
             calibration = None
             if raw.get("calibration"):
                 raw_calibration = raw["calibration"]
-                raw_calibration["skydip_dir"] = _resolve(
-                    _required(
-                        raw_calibration, "skydip_dir", "calibration.skydip_dir", path
-                    ),
-                    YAML_FOLDER,
+                raw_skydip_dirs = _required(
+                    raw_calibration, "skydip_dir", "calibration.skydip_dir", path
                 )
+                # a single entry, without the list
+                if not isinstance(raw_skydip_dirs, list):
+                    raw_skydip_dirs = [raw_skydip_dirs]
+                if not raw_skydip_dirs:
+                    raise ValueError(f"{path}: `calibration.skydip_dir` is empty.")
+
+                skydip_dirs = []
+                for raw_skydip_dir in raw_skydip_dirs:
+                    # an empty entry (`- ` alone) is None in the YAML. A ValueError,
+                    # not a TypeError, like every other error of the YAML file
+                    if not isinstance(raw_skydip_dir, str):
+                        raise ValueError(  # noqa: TRY004
+                            f"{path}: every entry of `calibration.skydip_dir` must be "
+                            f"a path, got {raw_skydip_dir!r}."
+                        )
+                    skydip_dirs.append(_resolve(raw_skydip_dir, YAML_FOLDER))
+
+                raw_calibration["skydip_dir"] = skydip_dirs
                 calibration = CalibrationConfig(**raw_calibration)
 
             # the `filtering` field is optional (uses the default values)

@@ -28,14 +28,20 @@ class SkyDip(NamedTuple):
     signal: NDArray[np.float64]  # (n_samples, n_det), raw units
 
 
-def read_skydip(gain_dir: str | Path, channel_ids: Sequence[int]) -> list[SkyDip]:
+def read_skydip(
+    gain_dir: str | Path | Sequence[str | Path], channel_ids: Sequence[int]
+) -> list[SkyDip]:
     """
-    Read the skydip FITS files of a directory, or a single one.
+    Read the skydip FITS files of one or more directories, or single files.
 
     Parameters
     ----------
-    gain_dir : str or :class:`~pathlib.Path`
-        Directory with the ``GAIN_CAL`` FITS files, or the path of a single FITS file.
+    gain_dir : str, :class:`~pathlib.Path` or sequence of them
+        Directories with the ``GAIN_CAL`` FITS files, paths of single FITS files, or a
+        mix of the two. A directory gives all its FITS files; a file named explicitly
+        is read whatever its extension. For one calibration they should all come from
+        the same night: :func:`~tolomeo.processing.skydip_responsivity` takes the
+        median over all of them.
     channel_ids : sequence of int
         Detectors to read, for example ``scan.channel_ids``. Their columns are
         ``chp_000``, ``chp_001``, ... in the ``"PH TABLE"``.
@@ -43,7 +49,9 @@ def read_skydip(gain_dir: str | Path, channel_ids: Sequence[int]) -> list[SkyDip
     Returns
     -------
     list of :class:`SkyDip`
-        One per usable file, in the order of the file names. Only the samples with
+        One per usable file, in the order of ``gain_dir`` and, inside a directory, of
+        the file names; a file reached twice (a directory and one of its files) is read
+        once. Only the samples with
         a valid elevation and ``flag_track`` set are kept. A file is skipped, with a
         warning that lists its name, if it is empty or truncated, if it lacks one of
         the two tables, if they have a different number of rows, or if it has fewer
@@ -53,20 +61,24 @@ def read_skydip(gain_dir: str | Path, channel_ids: Sequence[int]) -> list[SkyDip
     Raises
     ------
     NotADirectoryError
-        If ``gain_dir`` is neither a directory nor a file.
+        If an entry of ``gain_dir`` is neither a directory nor a file.
     FileNotFoundError
         If there is no usable file.
     """
-    gain_dir = Path(gain_dir).resolve()
+    entries = [gain_dir] if isinstance(gain_dir, (str, Path)) else list(gain_dir)
+    entries = [Path(entry).resolve() for entry in entries]
 
-    if gain_dir.is_file():
-        # a single skydip, named explicitly: its extension is not checked
-        files = [gain_dir]
-    elif gain_dir.is_dir():
-        # sorting by name keeps the files in time order
-        files = sorted(gain_dir.glob("*.fit*", case_sensitive=False))
-    else:
-        raise NotADirectoryError(f"{gain_dir} is neither a directory nor a file.")
+    files = []
+    for entry in entries:
+        if entry.is_file():
+            # a single skydip, named explicitly: its extension is not checked
+            found = [entry]
+        elif entry.is_dir():
+            # sorting by name keeps the files in time order
+            found = sorted(entry.glob("*.fit*", case_sensitive=False))
+        else:
+            raise NotADirectoryError(f"{entry} is neither a directory nor a file.")
+        files.extend(file for file in found if file not in files)
 
     workers = cpu_count() or 1
 
@@ -90,7 +102,8 @@ def read_skydip(gain_dir: str | Path, channel_ids: Sequence[int]) -> list[SkyDip
         )
 
     if not used:
-        raise FileNotFoundError(f"No usable skydip file in {gain_dir}.")
+        where = ", ".join(str(entry) for entry in entries)
+        raise FileNotFoundError(f"No usable skydip file in {where}.")
 
     return used
 

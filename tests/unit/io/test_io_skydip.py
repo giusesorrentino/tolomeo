@@ -48,6 +48,33 @@ def test_read_skydip_single_file(tmp_path):
     np.testing.assert_array_equal(skydip.signal, signal)
 
 
+def test_read_skydip_directories_and_files(tmp_path):
+    # Check that several directories and single files are read in the order given,
+    # and that a file reached twice (its directory and its own path) is read once.
+    data = [_skydip_data() for _ in range(3)]
+    (tmp_path / "night").mkdir()
+    (tmp_path / "other").mkdir()
+    write_skydip(tmp_path / "night" / "a.fits", *data[0], DETECTOR_IDS)
+    write_skydip(tmp_path / "night" / "b.fits", *data[1], DETECTOR_IDS)
+    write_skydip(tmp_path / "other" / "c.fits", *data[2], DETECTOR_IDS)
+
+    skydips = read_skydip(
+        [tmp_path / "other" / "c.fits", str(tmp_path / "night"), tmp_path / "other"],
+        DETECTOR_IDS,
+    )
+
+    assert len(skydips) == 3
+    for skydip, (_, signal) in zip(skydips, [data[2], data[0], data[1]], strict=True):
+        np.testing.assert_array_equal(skydip.signal, signal)
+
+
+def test_read_skydip_missing_entry_raises(tmp_path):
+    write_skydip(tmp_path / "a.fits", *_skydip_data(), DETECTOR_IDS)
+
+    with pytest.raises(NotADirectoryError, match=r"missing is neither"):
+        read_skydip([tmp_path, tmp_path / "missing"], DETECTOR_IDS)
+
+
 def test_read_skydip_keeps_only_valid_samples(tmp_path):
     # Check that the samples with flag_track unset or an elevation outside
     # (0, pi/2] are dropped.
