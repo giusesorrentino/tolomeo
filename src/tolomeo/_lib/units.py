@@ -157,7 +157,7 @@ def _conversion_factor(
     if source.is_equivalent(u.rad) and not new.is_equivalent(u.rad):
         raise ValueError(
             f"The unit is {unit!r}, the phase of the KIDs: "
-            "tolomeo.processing.calibrate converts a TOD to a temperature."
+            "tolomeo.calibration.calibrate converts a TOD to a temperature."
         )
 
     # the beam enters only between a temperature and a flux density per beam:

@@ -34,7 +34,7 @@ class TimeOrderedData(BaseModel):
     unit : str, optional
         Unit of ``signal``, as a FITS unit string: ``"rad"`` for the raw TOD of
         MISTRAL, the phase shift of the KIDs, and ``"K"`` after
-        :func:`~tolomeo.processing.calibrate`. For another instrument give the unit
+        :func:`~tolomeo.calibration.calibrate`. For another instrument give the unit
         of its signal, or None if it is not known. Defaults to ``"rad"``.
     """
 
@@ -102,7 +102,7 @@ class TimeOrderedData(BaseModel):
         conversion is the Rayleigh-Jeans one, at ``frequency`` and for a Gaussian beam
         of FWHM ``beam_fwhm`` (see Notes); they are not used for the other units. A
         TOD in ``rad``, the phase of the KIDs, becomes a temperature with
-        :func:`~tolomeo.processing.calibrate`, not with this method.
+        :func:`~tolomeo.calibration.calibrate`, not with this method.
 
         Parameters
         ----------

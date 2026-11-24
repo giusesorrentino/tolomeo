@@ -19,7 +19,8 @@ src/tolomeo/
                    radec2latlon)
   map/             MapGeometry (to_wcs, from_scan, from_beam), MapResult, BinnedMapResult
   io/              read_scan, read_skydip, write_map, read_map
-  processing/      process_tod, clean_subscans, FilteringConfig and its steps, masks, skydip calibration
+  processing/      process_tod, clean_subscans, FilteringConfig and its steps, masks
+  calibration/     skydip_responsivity (from the skydips), calibrate (after the cleaning)
   mapmaking/       public: gls_map, binned_map, estimate_inverse_noise, InverseNoise
                    private: _pointing (pixel of every sample), _noise (inverse spectra), _blocks
                    (overlap-save geometry), _operators (P, N^-1, A, b, preconditioner), _solver (CG),
@@ -48,8 +49,9 @@ tests/             unit/<package>/, integration/, e2e/, smoke_test.py; helpers i
 
 ## How the pieces fit
 
-`io.read_scan` gives a `Scan` → `processing.calibrate` (optional, from the skydips) → `processing.process_tod`
-(baseline, common mode, filters; a mask keeps the source out of the fits) → `MapGeometry` →
+`io.read_scan` gives a `Scan` → `processing.process_tod` (baseline, common mode, filters; a mask keeps the source
+out of the fits) → `calibration.calibrate` (optional, with the responsivity from the skydips; after the cleaning) →
+`MapGeometry` →
 `mapmaking.estimate_inverse_noise` (Welch inverse spectrum of every detector, then the filters and the
 marginalization) → `mapmaking.gls_map`: `_pointing_matrix`, the flagged and outside samples sent to a virtual pixel,
 `_normal_equations`, `_conjugate_gradient` → `MapResult` → `io.write_map`. `binned_map` averages the samples of every

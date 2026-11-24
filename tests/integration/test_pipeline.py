@@ -21,6 +21,7 @@ from tests.common import (
     write_scan_dir,
     write_skydip,
 )
+from tolomeo.calibration import calibrate, skydip_responsivity
 from tolomeo.io import read_map, read_scan, read_skydip, write_map
 from tolomeo.map import MapGeometry
 from tolomeo.mapmaking import binned_map, estimate_inverse_noise, gls_map
@@ -29,9 +30,7 @@ from tolomeo.processing import (
     CommonMode,
     FilteringConfig,
     RadiusMask,
-    calibrate,
     process_tod,
-    skydip_responsivity,
 )
 
 AMPLITUDE = 5.0  # peak of the source, in the units of the TOD

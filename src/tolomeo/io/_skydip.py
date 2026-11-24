@@ -40,7 +40,7 @@ def read_skydip(
         Directories with the ``GAIN_CAL`` FITS files, paths of single FITS files, or a
         mix of the two. A directory gives all its FITS files; a file named explicitly
         is read whatever its extension. For one calibration they should all come from
-        the same night: :func:`~tolomeo.processing.skydip_responsivity` takes the
+        the same night: :func:`~tolomeo.calibration.skydip_responsivity` takes the
         median over all of them.
     channel_ids : sequence of int
         Detectors to read, for example ``scan.channel_ids``. Their columns are

@@ -8,12 +8,13 @@ import numpy as np
 from astropy.time import Time
 
 from .._lib.messages import _warn
+from ..calibration import calibrate, skydip_responsivity
 from ..io import read_skydip, write_map
 from ..map import MapGeometry, MapResult
 from ..mapmaking import InverseNoise, estimate_inverse_noise, gls_map
 from ..mapmaking._noise import LeaveOneOutError
 from ..plotting import plot_map
-from ..processing import calibrate, process_tod, skydip_responsivity
+from ..processing import process_tod
 from ..tod import Scan
 from .config import RunConfig
 

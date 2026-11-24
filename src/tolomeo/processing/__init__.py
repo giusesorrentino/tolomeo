@@ -1,4 +1,3 @@
-from ._calibration import calibrate, skydip_responsivity
 from ._config import (
     Bandpass,
     Baseline,
@@ -28,8 +27,6 @@ __all__ = [
     "RemoveSpline",
     "SigmaClipMask",
     "Window",
-    "calibrate",
     "clean_subscans",
     "process_tod",
-    "skydip_responsivity",
 ]
