@@ -67,6 +67,12 @@ _MAX_DISCARDED = 0.1
 # as with a mask. A choice, not a standard value
 _MIN_COVERAGE = 0.5
 
+# smallest number of Welch blocks on the whole TOD that the automatic block length
+# must leave: with K blocks a bin of the spectrum fluctuates by about 1 / sqrt(K), and
+# its inverse, the weight of the map, is biased high by about 1 / (K - 1). A choice,
+# not a standard value
+_MIN_BLOCKS = 32
+
 __all__ = ["estimate_inverse_noise"]
 
 
@@ -371,7 +377,7 @@ def _auto_nperseg(
     sample_rate: float,
 ) -> int:
     r"""
-    Block length chosen from the segments of the TOD.
+    Block length chosen from the segments of the TOD and from its length.
 
     Welch's method assumes that the samples of a block are taken every
     ``1 / sample_rate``. A segment is a run of good samples with no flagged sample
@@ -418,11 +424,22 @@ def _auto_nperseg(
     .. math::
 
         n_{\rm perseg} = \max \left\{ 2^n \;:\;
-        \frac{\sum_{\ell_k < 2^n} \ell_k}{\sum_k \ell_k} \le \epsilon \right\}.
+        \frac{\sum_{\ell_k < 2^n} \ell_k}{\sum_k \ell_k} \le \epsilon,\;
+        2^n \le \frac{2N}{K_{\min} + 1} \right\},
 
-    Powers of two keep the FFTs fast. The value of :math:`\epsilon` is a choice, not
-    a result from the literature. The segments only choose the length: the spectra
-    are still estimated on the whole TOD.
+    and at least 2. The second condition keeps enough blocks in the average of
+    Welch's method. The spectra are estimated on the whole TOD of :math:`N` samples,
+    with blocks that overlap by half: a block of :math:`n` samples gives
+    :math:`K = \lfloor (N - n) / (n/2) \rfloor + 1` blocks, and :math:`K \ge K_{\min}`
+    (``_MIN_BLOCKS``) if and only if :math:`n \le 2N/(K_{\min} + 1)`. It matters for a
+    continuous TOD, as a patched scan (:meth:`~tolomeo.tod.Scan.patch`): with one
+    segment the first condition alone would give a block as long as the TOD, and a
+    spectrum averaged over one to three blocks, whose bins fluctuate by tens of
+    percent and whose inverse, the weight of the map, is biased high.
+
+    Powers of two keep the FFTs fast. The values of :math:`\epsilon` and
+    :math:`K_{\min}` are choices, not results from the literature. The segments only
+    choose the length: the spectra are still estimated on the whole TOD.
     """
     # with no good sample there is no segment, and ok_idx[0] below would fail
     if not ok.any():
@@ -453,6 +470,11 @@ def _auto_nperseg(
     # block would fit in no segment at all. bit_length gives it exactly, without the
     # rounding of a float log2
     nperseg = 1 << (int(lengths.max()).bit_length() - 1)
+
+    # and not longer than the longest power of two that still gives _MIN_BLOCKS Welch
+    # blocks on the whole TOD (see the Notes); at least 2, also for a tiny TOD
+    max_nperseg = max(int(2 * time.size / (_MIN_BLOCKS + 1)), 2)
+    nperseg = min(nperseg, 1 << (max_nperseg.bit_length() - 1))
 
     # halve the block until the segments shorter than it hold at most a fraction
     # _MAX_DISCARDED of the good samples. The smallest block has 2 samples, the

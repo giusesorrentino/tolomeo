@@ -16,6 +16,7 @@ from tolomeo.map import MapGeometry
 from tolomeo.mapmaking import InverseNoise, estimate_inverse_noise
 from tolomeo.mapmaking._noise import (
     _FLOOR_FACTOR,
+    _MIN_BLOCKS,
     _STOP_FACTOR,
     LeaveOneOutError,
     _auto_nperseg,
@@ -159,6 +160,7 @@ def test_estimate_inverse_noise_uses_the_passband_of_the_tod():
     assert inv_noise.passband == (2.0, 40.0)
 
 
+@pytest.mark.usefixtures("segments_only")
 def test_estimate_inverse_noise_automatic_nperseg():
     # Subscans of 4096 samples with a gap in time between them: blocks of 4096.
     scan = _long_scan(gap=1.0)
@@ -317,6 +319,12 @@ def test_estimate_inverse_noise_samples_left_out(capsys):
 # -----------------------------------------------------------------------------
 
 
+@pytest.fixture
+def segments_only(monkeypatch):
+    """``_auto_nperseg`` with the rule of the segments only: one Welch block is enough."""
+    monkeypatch.setattr("tolomeo.mapmaking._noise._MIN_BLOCKS", 1)
+
+
 def _times(n):
     return MJD_START + np.arange(n) / SAMPLE_RATE / 86400
 
@@ -341,12 +349,14 @@ def _segmented_times(lengths):
         ([3, 3], 2),
     ],
 )
+@pytest.mark.usefixtures("segments_only")
 def test_auto_nperseg(lengths, expected):
     time = _segmented_times(lengths)
 
     assert _auto_nperseg(time, np.ones(time.size, dtype=bool), SAMPLE_RATE) == expected
 
 
+@pytest.mark.usefixtures("segments_only")
 def test_auto_nperseg_flags_and_gaps_end_the_segments():
     # Check that a run of flagged samples and a jump in time both end a segment: if
     # either were missed, the 100 samples would be one segment, and nperseg 64.
@@ -358,6 +368,27 @@ def test_auto_nperseg_flags_and_gaps_end_the_segments():
     assert _auto_nperseg(_times(100), np.ones(100, dtype=bool), SAMPLE_RATE) == 64
     assert _auto_nperseg(_times(100), ok, SAMPLE_RATE) == 16
     assert _auto_nperseg(time, np.ones(100, dtype=bool), SAMPLE_RATE) == 32
+
+
+@pytest.mark.parametrize(
+    "n_samples, expected",
+    [
+        ((_MIN_BLOCKS + 1) * 256, 512),  # exactly _MIN_BLOCKS blocks of 512
+        ((_MIN_BLOCKS + 1) * 256 - 1, 256),  # one sample less: too few blocks of 512
+        (10, 2),  # a tiny TOD: the smallest block
+    ],
+)
+def test_auto_nperseg_min_blocks(n_samples, expected):
+    # Check that a continuous TOD, as a patched scan, gets blocks short enough for
+    # _MIN_BLOCKS Welch blocks, not one block as long as the TOD.
+    time = _times(n_samples)
+
+    nperseg = _auto_nperseg(time, np.ones(n_samples, dtype=bool), SAMPLE_RATE)
+
+    assert nperseg == expected
+    if nperseg > 2:
+        # blocks of welch on the whole TOD, with half overlap
+        assert (n_samples - nperseg) // (nperseg // 2) + 1 >= _MIN_BLOCKS
 
 
 def test_auto_nperseg_no_good_sample_raises():
