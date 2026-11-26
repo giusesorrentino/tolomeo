@@ -248,7 +248,7 @@ class EdgeMask(BaseModel):
             mask per detector.
         """
         tod = scan.tod
-        background = np.zeros(tod.signal.shape[0], dtype=bool)
+        background = np.zeros(tod.n_samples, dtype=bool)
 
         for start, stop in pairwise(tod.segments):
             if stop <= start:

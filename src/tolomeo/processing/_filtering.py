@@ -68,7 +68,7 @@ def _drop_invalid_pointing(scan: Scan) -> Scan:
 
 
 def _check_scan(scan, background) -> None:
-    n_samples = scan.tod.signal.shape[0]
+    n_samples = scan.tod.n_samples
 
     # tod.segments holds the first row of every subscan plus, at the end, the
     # total number of rows: subscan k is signal[segments[k]:segments[k + 1]]

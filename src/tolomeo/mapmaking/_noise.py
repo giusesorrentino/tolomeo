@@ -272,7 +272,7 @@ def estimate_inverse_noise(
         If ``cross_spectra`` is True.
     """
     sample_rate = scan.tod.sample_rate
-    n_det = scan.tod.signal.shape[1]
+    n_det = scan.tod.n_det
     workers = _resolve_workers(workers)
 
     # the arguments are checked here, before the slow estimate
@@ -671,7 +671,7 @@ def _leave_one_out_residual(
         two scans of the same field.
     """
     signal = scan.tod.signal
-    n_samples = signal.shape[0]
+    n_samples = scan.tod.n_samples
     n_pixels = geometry.n_pixels
 
     # boundary of subscans nearest to the middle. The first and the last boundaries

@@ -87,7 +87,7 @@ class RunMapmaker:
         header |= {
             "DATE-OBS": (Time(mjd, format="mjd").isot, "UTC of the first sample"),
             "MJD-OBS": (mjd, "MJD of the first sample"),
-            "NDET": (scan.tod.signal.shape[1], "Detectors read from the beammap"),
+            "NDET": (scan.tod.n_det, "Detectors read from the beammap"),
             "CALIB": (config.calibration is not None, "Skydip calibration applied"),
         }
         if config.calibration is not None:

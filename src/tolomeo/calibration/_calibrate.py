@@ -50,7 +50,7 @@ def calibrate(
             f"The TOD is already in {scan.tod.unit!r}: it has been calibrated."
         )
 
-    n_det = scan.tod.signal.shape[1]
+    n_det = scan.tod.n_det
     responsivity = np.asarray(responsivity, dtype=np.float64)
 
     if responsivity.shape != (n_det,):

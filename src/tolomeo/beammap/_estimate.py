@@ -165,7 +165,7 @@ def reconstruct_focal_plane(
     y_centres = (np.arange(ny) + 0.5) * pix - ny * pix / 2
     x_centre, y_centre = np.meshgrid(x_centres, y_centres)
 
-    n_det = scan.tod.signal.shape[1]
+    n_det = scan.tod.n_det
     smooth_sigma = fwhm * _FWHM2SIGMA / pix  # in pixels
 
     # map of every detector, mean of its samples in every pixel, and its noise,

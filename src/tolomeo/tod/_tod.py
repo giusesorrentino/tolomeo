@@ -64,11 +64,20 @@ class TimeOrderedData(BaseModel):
         :class:`~tolomeo.tod.TimeOrderedData`
             A new object with ``n_samples = mask.sum()``; ``segments`` is moved to the
             positions of the kept samples. The arrays are copies.
+
+        Raises
+        ------
+        TypeError
+            If ``mask`` is not boolean.
+        ValueError
+            If ``mask`` does not have shape ``(n_samples,)``.
         """
         if mask.dtype != bool:
-            raise TypeError("")
-        if mask.shape != (self.signal.shape[0],):
-            raise ValueError("")
+            raise TypeError(f"`mask` must be boolean, got dtype {mask.dtype}.")
+        if mask.shape != (self.n_samples,):
+            raise ValueError(
+                f"`mask` must have shape ({self.n_samples},), got {mask.shape}."
+            )
 
         return self.model_copy(
             update={
@@ -86,6 +95,16 @@ class TimeOrderedData(BaseModel):
             self.time * 86400, axis=0
         )  # remember that time is in MJD, so we convert to seconds
         return 1 / np.median(dt)
+
+    @property
+    def n_samples(self) -> int:
+        """Number of time samples: the rows of ``signal``."""
+        return self.signal.shape[0]
+
+    @property
+    def n_det(self) -> int:
+        """Number of detectors: the columns of ``signal``."""
+        return self.signal.shape[1]
 
     def to(
         self,
