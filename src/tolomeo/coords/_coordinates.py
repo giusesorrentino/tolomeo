@@ -72,11 +72,20 @@ class Coordinates(BaseModel):
         -------
         :class:`~tolomeo.coords.Coordinates`
             New object whose arrays have shape ``(mask.sum(),)`` (copies).
+
+        Raises
+        ------
+        TypeError
+            If ``mask`` is not boolean.
+        ValueError
+            If ``mask`` does not have shape ``(n_samples,)``.
         """
         if mask.dtype != bool:
-            raise TypeError("")
-        if mask.shape != (self.ra.shape[0],):
-            raise ValueError("")
+            raise TypeError(f"`mask` must be boolean, got dtype {mask.dtype}.")
+        if mask.shape != self.ra.shape:
+            raise ValueError(
+                f"`mask` must have shape {self.ra.shape}, got {mask.shape}."
+            )
 
         update = {
             "ra": self.ra[mask],
