@@ -99,10 +99,13 @@ class RunMapmaker:
             )
 
         header["NPERSEG"] = (inv_noise.nperseg, "Samples per noise block")
-        header["GLSTOL"] = (config.gls.tol, "Tolerance of the solver")
-        header["MAXITER"] = (config.gls.maxiter, "Maximum iterations of the solver")
-        if config.gls.min_hits_frac is not None:
-            header["MINHITS"] = (config.gls.min_hits_frac, "Min hits / max hits")
+        header["GLSTOL"] = (config.mapmaking.tol, "Tolerance of the solver")
+        header["MAXITER"] = (
+            config.mapmaking.maxiter,
+            "Maximum iterations of the solver",
+        )
+        if config.mapmaking.min_hits_frac is not None:
+            header["MINHITS"] = (config.mapmaking.min_hits_frac, "Min hits / max hits")
 
         header.update(config.output.header)
         return header
@@ -175,7 +178,7 @@ class RunMapmaker:
         stays out of the spectra, unless ``noise.leave_one_out`` removes it without a
         mask. When the leave-one-out cannot be done (a single scan), a warning says so
         and the spectra are estimated on all the good samples, without a mask. The
-        threads are ``config.gls.workers``.
+        threads are ``config.mapmaking.workers``.
         """
         noise = self.config.noise
         if noise.leave_one_out:
@@ -188,7 +191,7 @@ class RunMapmaker:
             "geometry": self.config.geometry,
             "background": None,
             "cross_spectra": False,
-            "workers": self.config.gls.workers,
+            "workers": self.config.mapmaking.workers,
         }
         try:
             return estimate_inverse_noise(
@@ -204,7 +207,7 @@ class RunMapmaker:
         self, scan: Scan, geometry: MapGeometry, inv_noise: InverseNoise
     ) -> MapResult:
         """
-        ``gls_map(scan, geometry, inv_noise, ...)`` with the fields of ``config.gls``.
+        ``gls_map(scan, geometry, inv_noise, ...)`` with the fields of ``config.mapmaking``.
 
         ``solver``, ``residual_norm``, ``tol``, ``maxiter``, ``min_hits_frac`` and
         ``workers`` map one to one onto the arguments of ``gls_map`` (same names).
@@ -214,12 +217,12 @@ class RunMapmaker:
             geometry=geometry,
             inv_noise=inv_noise,
             initial_map=None,
-            solver=self.config.gls.solver,
-            residual_norm=self.config.gls.residual_norm,
-            tol=self.config.gls.tol,
-            maxiter=self.config.gls.maxiter,
-            min_hits_frac=self.config.gls.min_hits_frac,
-            workers=self.config.gls.workers,
+            solver=self.config.mapmaking.solver,
+            residual_norm=self.config.mapmaking.residual_norm,
+            tol=self.config.mapmaking.tol,
+            maxiter=self.config.mapmaking.maxiter,
+            min_hits_frac=self.config.mapmaking.min_hits_frac,
+            workers=self.config.mapmaking.workers,
         )
 
     def _save(self, result: MapResult, header: dict) -> None:

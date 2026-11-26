@@ -54,7 +54,7 @@ Example::
           f_upper: 30
           order: 2
 
-    gls:                             # arguments of gls_map
+    mapmaking:                       # arguments of gls_map
       solver: cg                     # cg | minres
       residual_norm: plain           # plain | preconditioned | m_inverse
       tol: 1.0e-3
@@ -118,6 +118,26 @@ def _required(section: Any, key: str, name: str, yaml_path: str | Path) -> Any:
     return section[key]
 
 
+def _check_keys(
+    section: dict, known: set[str], name: str | None, yaml_path: str | Path
+) -> None:
+    """
+    Raise a ``ValueError`` if ``section`` has a key not in ``known``.
+
+    For the parts of the YAML that are read key by key, and not by a model that
+    forbids unknown keys: there a misspelled key would be ignored. ``name`` is the
+    part, as written in the YAML, or None for the sections of the file.
+    """
+    unknown = sorted(set(section) - known)
+    if unknown:
+        what = "sections" if name is None else f"keys in `{name}`"
+        listed = ", ".join(f"`{key}`" for key in unknown)
+        allowed = ", ".join(f"`{key}`" for key in sorted(known))
+        raise ValueError(
+            f"{yaml_path}: unknown {what}: {listed}; the accepted ones are {allowed}."
+        )
+
+
 class NoiseConfig(BaseModel):
     """
     The noise model (arguments of ``estimate_inverse_noise``).
@@ -130,7 +150,7 @@ class NoiseConfig(BaseModel):
     ``lowpass``, ``highpass`` and ``bandpass`` steps as in ``filtering``, with the same
     keys. ``mask`` leaves samples out of the spectra, with the same keys as
     ``filtering.mask``; without it the mask of ``filtering`` is used. ``background``
-    and ``cross_spectra`` are not exposed yet; the threads are ``gls.workers``.
+    and ``cross_spectra`` are not exposed yet; the threads are ``mapmaking.workers``.
 
     ``leave_one_out`` removes the source from the TOD of the spectra with the binned
     map of the other half of the scans, instead of a mask (see
@@ -173,7 +193,7 @@ class NoiseConfig(BaseModel):
         return self
 
 
-class GLSConfig(BaseModel):
+class MapMakingConfig(BaseModel):
     """
     The solver (arguments of ``gls_map``).
 
@@ -261,8 +281,15 @@ class OutputConfig(BaseModel):
 
 
 class RunConfig(BaseModel):
-    """The whole YAML file. Unknown keys are an error, so a typo does not go unnoticed.
-    SCRIVERE CHE LA PATH (SE RELATIVE) E' RISOLTA A PARTIRE DALLA POSIZIONE DELLO YAML!
+    """
+    The whole YAML file, read with :meth:`from_yaml`.
+
+    Every section is a field, with the arguments of one step of the pipeline: only
+    ``scan`` and ``output`` are required. An unknown key is an error, inside a section
+    and at the top level, so that a typo does not go unnoticed; a section with an old
+    name (``cleaning``, ``gls``) raises with its new one. A relative path in the file is
+    resolved from the folder of the YAML file, not from the directory where ``tolomeo``
+    is launched.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -273,7 +300,7 @@ class RunConfig(BaseModel):
     calibration: CalibrationConfig | None = None
     filtering: FilteringConfig = Field(default_factory=FilteringConfig)
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
-    gls: GLSConfig = Field(default_factory=GLSConfig)
+    mapmaking: MapMakingConfig = Field(default_factory=MapMakingConfig)
     # text of the YAML file, written in the FITS map (None if not built from a file)
     yaml_text: str | None = None
 
@@ -293,9 +320,17 @@ class RunConfig(BaseModel):
                 raise ValueError(
                     f"{path}: the `cleaning` section is now called `filtering`."
                 )
+            if "gls" in raw:
+                raise ValueError(
+                    f"{path}: the `gls` section is now called `mapmaking`."
+                )
+
+            # a section that is not a field would be ignored: a typo in its name must
+            # not go unnoticed
+            _check_keys(raw, set(cls.model_fields) - {"yaml_text"}, None, path)
 
             # old keys: n_freqs is now nperseg = 2 * (n_freqs - 1), in `noise`
-            for section in ("gls", "noise"):
+            for section in ("mapmaking", "noise"):
                 if isinstance(raw.get(section), dict) and "n_freqs" in raw[section]:
                     raise ValueError(
                         f"{path}: `{section}.n_freqs` is now `noise.nperseg`, "
@@ -303,6 +338,7 @@ class RunConfig(BaseModel):
                     )
 
             raw_scan = _required(raw, "scan", "scan", path)
+            _check_keys(raw_scan, {"tod_dirs", "beammap", "channels"}, "scan", path)
             raw_specs = _required(raw_scan, "tod_dirs", "scan.tod_dirs", path)
             if not isinstance(raw_specs, list):  # a single entry, without the list
                 raw_specs = [raw_specs]
@@ -311,6 +347,12 @@ class RunConfig(BaseModel):
             for raw_spec in raw_specs:
                 if isinstance(raw_spec, str):
                     raw_spec = {"path": raw_spec}
+                _check_keys(
+                    raw_spec,
+                    {"path", "ra_offset", "dec_offset"},
+                    "scan.tod_dirs[]",
+                    path,
+                )
                 tod_path = _resolve(
                     _required(raw_spec, "path", "scan.tod_dirs[].path", path),
                     YAML_FOLDER,
@@ -366,9 +408,9 @@ class RunConfig(BaseModel):
             raw_noise = raw.get("noise") or {}
             noise = NoiseConfig(**raw_noise)
 
-            # the `gls` field is optional (uses the default values)
-            raw_gls = raw.get("gls") or {}
-            gls = GLSConfig(**raw_gls)
+            # the `mapmaking` field is optional (uses the default values)
+            raw_mapmaking = raw.get("mapmaking") or {}
+            mapmaking = MapMakingConfig(**raw_mapmaking)
 
             raw_output = _required(raw, "output", "output", path)
 
@@ -425,7 +467,7 @@ class RunConfig(BaseModel):
             calibration=calibration,
             filtering=filtering,
             noise=noise,
-            gls=gls,
+            mapmaking=mapmaking,
             output=output,
             yaml_text=yaml_text,
         )

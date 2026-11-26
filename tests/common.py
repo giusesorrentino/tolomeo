@@ -304,7 +304,7 @@ scan:
 noise:
   nperseg: 128
   leave_one_out: false  # a single scan
-gls:
+mapmaking:
   tol: 5.0e-2
 output:
   path: out/map.fits

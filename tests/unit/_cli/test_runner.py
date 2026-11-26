@@ -15,7 +15,7 @@ from tests.common import (
 )
 from tolomeo._cli.config import (
     CalibrationConfig,
-    GLSConfig,
+    MapMakingConfig,
     NoiseConfig,
     OutputConfig,
     RunConfig,
@@ -36,7 +36,7 @@ def _config(tmp_path, **kwargs):
         "geometry": GEOMETRY,
         "noise": NoiseConfig(nperseg=128, leave_one_out=False),  # a single scan
         # loose: on this short scan the CG does not get much below 1e-2
-        "gls": GLSConfig(tol=5e-2, workers=1),
+        "mapmaking": MapMakingConfig(tol=5e-2, workers=1),
     }
     return RunConfig(**(fields | kwargs))
 
@@ -70,10 +70,12 @@ def test_run_writes_the_map(tmp_path):
 
 
 def test_run_uses_the_solver_of_the_config(tmp_path):
-    # Check that gls.solver and gls.residual_norm reach gls_map, and that the solver is
+    # Check that mapmaking.solver and mapmaking.residual_norm reach gls_map, and that the solver is
     # written in the FITS map.
-    gls = GLSConfig(tol=5e-2, workers=1, solver="minres", residual_norm="m_inverse")
-    config = _config(tmp_path, gls=gls)
+    mapmaking = MapMakingConfig(
+        tol=5e-2, workers=1, solver="minres", residual_norm="m_inverse"
+    )
+    config = _config(tmp_path, mapmaking=mapmaking)
 
     result = RunMapmaker(config).run()
 
@@ -107,7 +109,7 @@ def test_run_overwrites_when_asked(tmp_path):
 def test_header(tmp_path):
     config = _config(
         tmp_path,
-        gls=GLSConfig(tol=1e-4, maxiter=50, min_hits_frac=0.2),
+        mapmaking=MapMakingConfig(tol=1e-4, maxiter=50, min_hits_frac=0.2),
         output=OutputConfig(path=tmp_path / "map.fits", header={"NDET": 99}),
     )
     runner = RunMapmaker(config)

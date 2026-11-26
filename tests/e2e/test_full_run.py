@@ -54,7 +54,7 @@ filtering:
 noise:
   nperseg: 128
   leave_one_out: false  # a single scan
-gls:
+mapmaking:
   workers: 1
 output:
   path: out/map.fits

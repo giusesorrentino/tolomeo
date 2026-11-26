@@ -13,7 +13,7 @@ from tests.common import (
 )
 from tolomeo._cli.config import (
     CalibrationConfig,
-    GLSConfig,
+    MapMakingConfig,
     NoiseConfig,
     OutputConfig,
     RunConfig,
@@ -71,12 +71,12 @@ def test_noise_config_unknown_key_raises():
 
 
 # -----------------------------------------------------------------------------
-# GLSConfig, CalibrationConfig, OutputConfig
+# MapMakingConfig, CalibrationConfig, OutputConfig
 # -----------------------------------------------------------------------------
 
 
-def test_gls_config_defaults():
-    config = GLSConfig()
+def test_mapmaking_config_defaults():
+    config = MapMakingConfig()
 
     assert config.solver == "cg"
     assert config.residual_norm == "plain"
@@ -97,9 +97,9 @@ def test_gls_config_defaults():
     ],
     ids=["tol", "maxiter", "min_hits_frac", "residual_norm", "solver"],
 )
-def test_gls_config_invalid_value_raises(kwargs):
+def test_mapmaking_config_invalid_value_raises(kwargs):
     with pytest.raises(ValidationError):
-        GLSConfig(**kwargs)
+        MapMakingConfig(**kwargs)
 
 
 def test_calibration_config_temperature_in_kelvin(tmp_path):
@@ -235,7 +235,7 @@ def test_from_yaml_sections(tmp_path):
         "  steps:\n"
         "    - type: baseline\n"
         "      deg: 2\n"
-        "gls:\n"
+        "mapmaking:\n"
         "  tol: 1.0e-5\n"
         "  min_hits_frac: 0.2\n"
         "output:\n"
@@ -251,8 +251,8 @@ def test_from_yaml_sections(tmp_path):
     assert config.calibration.skydip_dir == [(tmp_path / "cal").resolve()]
     assert config.calibration.T_atm == 270.0
     assert config.filtering.steps[0].deg == 2
-    assert config.gls.tol == 1e-5
-    assert config.gls.min_hits_frac == 0.2
+    assert config.mapmaking.tol == 1e-5
+    assert config.mapmaking.min_hits_frac == 0.2
     assert config.output.overwrite
     assert config.output.header == {"OBJECT": "3C84"}
     assert config.output.plot == (tmp_path / "plots" / "map.png").resolve()
@@ -280,6 +280,7 @@ def test_from_yaml_sections(tmp_path):
             "output.path",
         ),
         (RUN_YAML + "cleaning:\n  steps: []\n", r"now called `filtering`"),
+        (RUN_YAML + "gls:\n  tol: 1.0e-3\n", r"now called `mapmaking`"),
         (RUN_YAML.replace("nperseg: 128", "n_freqs: 4097"), r"is now `noise.nperseg`"),
         (RUN_YAML.replace("nperseg: 128", "nperseg: 127"), r"must be even"),
         (RUN_YAML + "geometry:\n  nx: 40\n", r"both numbers or both `auto`"),
@@ -296,6 +297,7 @@ def test_from_yaml_sections(tmp_path):
         "no_tod_path",
         "no_output_path",
         "cleaning",
+        "gls",
         "n_freqs",
         "odd_nperseg",
         "only_nx",
@@ -307,21 +309,29 @@ def test_from_yaml_invalid_file_raises(tmp_path, text, match):
         RunConfig.from_yaml(write_run(tmp_path, text))
 
 
-@pytest.mark.xfail(reason="from_yaml ignores the keys it does not read")
 @pytest.mark.parametrize(
-    "text",
+    ("text", "match"),
     [
-        RUN_YAML + "filterng:\n  steps: []\n",
-        RUN_YAML.replace(
-            "  beammap: beammap.dat\n", "  beammap: beammap.dat\n  typo: 1\n"
+        (RUN_YAML + "filterng:\n  steps: []\n", r"unknown sections: `filterng`"),
+        (
+            RUN_YAML.replace(
+                "  beammap: beammap.dat\n", "  beammap: beammap.dat\n  typo: 1\n"
+            ),
+            r"unknown keys in `scan`: `typo`",
+        ),
+        (
+            RUN_YAML.replace(
+                "  tod_dirs: tod\n", "  tod_dirs:\n    - {path: tod, ra: 1}\n"
+            ),
+            r"unknown keys in `scan.tod_dirs\[\]`: `ra`",
         ),
     ],
-    ids=["section", "scan_key"],
+    ids=["section", "scan_key", "tod_dirs_key"],
 )
-def test_from_yaml_unknown_key_raises(tmp_path, text):
+def test_from_yaml_unknown_key_raises(tmp_path, text, match):
     # The docstring of RunConfig: unknown keys are an error, so that a typo does not
     # go unnoticed (here the misspelled section would leave the default filtering).
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=match):
         RunConfig.from_yaml(write_run(tmp_path, text))
 
 
