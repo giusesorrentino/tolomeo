@@ -231,13 +231,14 @@ def estimate_inverse_noise(
     mask : ``RadiusMask``, ``SigmaClipMask`` or ``EdgeMask``, optional
         Samples left out of the spectra (for example the source), the same objects as
         the ``mask`` of :class:`~tolomeo.processing.FilteringConfig`. The flagged
-        samples (``scan.tod.flags`` False) are left out too. Give either ``mask`` or
-        ``background``, not both.
+        samples (``scan.tod.flags`` False) are left out too, except the patched ones
+        (``scan.tod.patched``): their synthetic signal has no source, and they are
+        always used. Give either ``mask`` or ``background``, not both.
     geometry : :class:`~tolomeo.map.MapGeometry`, optional
         Needed by a ``RadiusMask`` and by ``leave_one_out``.
     background : :class:`~numpy.ndarray` of bool, optional
         ``True`` for the samples used to estimate the spectra (far from the source),
-        used as it is. None, and no ``mask``, means ``scan.tod.flags``. Shape
+        used as it is. None, and no ``mask``, means ``scan.tod.spectrum_flags``. Shape
         ``(n_samples,)`` or ``(n_samples, n_det)``.
     cross_spectra : bool
         Also estimate the cross spectra of the detector pairs. Not implemented yet:
@@ -307,12 +308,20 @@ def estimate_inverse_noise(
                 passband = _narrow_passband(passband, filt.f_lower, filt.f_upper)
 
     # samples of the estimate: the mask combined with the flags, the given background
-    # as it is, or the flags alone. Shape (n_samples,) or (n_samples, n_det)
-    flags = scan.tod.flags
+    # as it is, or the flags alone. The flags are spectrum_flags: a patched sample is
+    # flagged for the map, but it is synthetic noise with no source, so the spectra
+    # use it and the mask does not remove it. Shape (n_samples,) or (n_samples, n_det)
+    flags = scan.tod.spectrum_flags
     if mask is not None:
         args = (scan, geometry) if isinstance(mask, RadiusMask) else (scan,)
         background = mask.build(*args)
-        background = background & (flags if background.ndim == 1 else flags[:, None])
+        good, patched = flags, scan.tod.patched
+        if background.ndim == 2:
+            good = good[:, None]
+            patched = None if patched is None else patched[:, None]
+        if patched is not None:
+            background = background | patched
+        background = background & good
     elif background is None:
         background = flags
 
@@ -375,7 +384,8 @@ def _auto_nperseg(
     time : :class:`~numpy.ndarray`
         Time of every sample, in MJD. Shape ``(n_samples,)``.
     ok : :class:`~numpy.ndarray` of bool
-        True for the good samples (``scan.tod.flags``). Shape ``(n_samples,)``.
+        True for the good samples (``scan.tod.spectrum_flags``). Shape
+        ``(n_samples,)``.
     sample_rate : float
         Sampling frequency in Hz.
 
@@ -640,7 +650,8 @@ def _leave_one_out_residual(
     ``r_B = d_B - P_B m_A`` keep the noise and lose the source. A sample is usable if
     it is in ``background``, inside the map and in a pixel that the other half sees;
     the others get 0 in the residual and False in the mask, and the spectral estimate
-    interpolates them.
+    interpolates them. A patched sample (``scan.tod.patched``) is synthetic noise with
+    no sky: it stays out of the maps, and its residual is the sample itself.
 
     Parameters
     ----------
@@ -691,6 +702,11 @@ def _leave_one_out_residual(
         background = background[:, None]
     ok = inside & background
 
+    # the patched samples stay out of the maps: they have no sky to model
+    patched = scan.tod.patched
+    if patched is not None:
+        ok &= ~patched[:, None]
+
     pixels_a, pixels_b = pixels[:half], pixels[half:]
     signal_a, signal_b = signal[:half], signal[half:]
     ok_a, ok_b = ok[:half], ok[half:]
@@ -723,4 +739,12 @@ def _leave_one_out_residual(
             "half: the leave-one-out needs at least two scans of the same field."
         )
 
-    return np.concatenate([res_a, res_b]), np.concatenate([usable_a, usable_b])
+    residual = np.concatenate([res_a, res_b])
+    usable = np.concatenate([usable_a, usable_b])
+
+    # a patched sample is noise only: its residual is the sample, and it is usable
+    # where the background takes it
+    if patched is not None:
+        residual = np.where(patched[:, None], signal, residual)
+        usable |= patched[:, None] & background
+    return residual, usable

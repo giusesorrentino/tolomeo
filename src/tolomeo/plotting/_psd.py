@@ -76,7 +76,7 @@ def plot_psd(
     with plt.style.context(STYLE_FILE):
         f, psd = _mean_psd(
             tod.signal,
-            tod.flags,
+            tod.spectrum_flags,
             tod.segments,
             tod.sample_rate,
             nperseg,

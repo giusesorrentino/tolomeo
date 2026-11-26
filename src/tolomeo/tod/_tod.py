@@ -26,6 +26,12 @@ class TimeOrderedData(BaseModel):
     segments : :class:`~numpy.ndarray` of int64
         First row of every subscan, followed by ``n_samples``: subscan ``k`` is
         ``signal[segments[k]:segments[k + 1]]``. Shape ``(n_subscans + 1,)``.
+    patched : :class:`~numpy.ndarray` of bool, optional
+        True for a sample whose signal is synthetic, written by
+        :meth:`Scan.patch <tolomeo.tod.Scan.patch>`, the same for all the detectors.
+        A patched sample is flagged, so that the map leaves it out, but the noise
+        spectra use it (see :attr:`spectrum_flags`). Shape ``(n_samples,)``.
+        Defaults to ``None``: no sample is patched.
     passband : 2-tuple of float, optional
         Band, in Hz, left by the frequency filters already applied to ``signal`` by
         :func:`~tolomeo.processing.process_tod`: the intersection of their bands.
@@ -45,6 +51,7 @@ class TimeOrderedData(BaseModel):
     time: NDArray[np.float64]  # shape (n_samples,)
     flags: NDArray[np.bool_]  # shape (n_samples,)
     segments: NDArray[np.int64]
+    patched: NDArray[np.bool_] | None = None  # shape (n_samples,)
     passband: tuple[float, float] | None = None
     unit: str | None = "rad"
 
@@ -85,6 +92,7 @@ class TimeOrderedData(BaseModel):
                 "time": self.time[mask],
                 "flags": self.flags[mask],
                 "segments": np.concatenate(([0], np.cumsum(mask)))[self.segments],
+                "patched": None if self.patched is None else self.patched[mask],
             }
         )
 
@@ -95,6 +103,19 @@ class TimeOrderedData(BaseModel):
             self.time * 86400, axis=0
         )  # remember that time is in MJD, so we convert to seconds
         return 1 / np.median(dt)
+
+    @property
+    def spectrum_flags(self) -> NDArray[np.bool_]:
+        """
+        True for the samples that the noise spectra can use: the good and the patched.
+
+        ``flags`` says which samples enter a map. A patched sample is flagged there,
+        but its signal is synthetic noise with no sky, so the spectra use it.
+        Shape ``(n_samples,)``.
+        """
+        if self.patched is None:
+            return self.flags
+        return self.flags | self.patched
 
     @property
     def n_samples(self) -> int:

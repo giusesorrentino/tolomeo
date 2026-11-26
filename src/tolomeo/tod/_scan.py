@@ -2,19 +2,28 @@ from __future__ import annotations
 
 from itertools import pairwise
 from pathlib import Path
+from typing import Literal
 
 import astropy.units as u
 import numpy as np
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, field_validator
+from scipy.interpolate import make_smoothing_spline
+from scipy.signal import welch
+from scipy.stats import median_abs_deviation
 
 from .._lib.units import Arcsec
+from .._signal.realization import fill_gaps, rfft_variances
 from ..coords import Coordinates
 from ._tod import TimeOrderedData
 
 __all__ = ["Scan", "ScanSpec"]
 
 _RADIAN_TO_ARCMIN = 180 * 60 / np.pi
+# a jump in time longer than this many sampling steps is a gap
+_JUMP_FACTOR = 1.5
+# samples fitted on each side of a gap, in units of the length of the gap
+_GAP_FIT_WINDOW_FACTOR = 2
 
 
 class ScanSpec(BaseModel):
@@ -202,3 +211,336 @@ class Scan(BaseModel):
         """
         tod = self.tod.to(unit, frequency=frequency, beam_fwhm=beam_fwhm)
         return self.model_copy(update={"tod": tod})
+
+    # TODO(patch):
+    # - where="flag" and "both": fill the flagged samples in place, without inserting
+    #   new ones (with "constrained": fill_gaps with the flagged samples as the gaps);
+    # - a maximum gap length (a long stop of the telescope would take GB); a fit window
+    #   of fewer than 5 samples, next to a very short stretch of data, makes
+    #   make_smoothing_spline fail.
+    # See also the gap filling of sotodlib:
+    # https://sotodlib.readthedocs.io/en/latest/_modules/sotodlib/tod_ops/gapfill.html
+    def patch(
+        self,
+        mode: Literal["constrained", "spline"] = "constrained",
+        where: Literal["gap", "flag", "both"] = "gap",
+        side: Literal["previous", "next"] = "previous",
+        seed: int | None = 0,
+    ) -> Scan:
+        r"""
+        The same scan with synthetic samples in its time gaps.
+
+        A gap is a jump in ``tod.time`` longer than 1.5 sampling steps, as between two
+        subscans. It is filled with the samples that are missing, one sampling step
+        apart, so that the spectral estimates and the filters in the time domain see a
+        continuous TOD.
+
+        With ``mode="spline"`` the signal of a detector in a gap is a smoothing spline
+        (:func:`~scipy.interpolate.make_smoothing_spline`, with the smoothing chosen
+        by generalized cross-validation) fitted on the samples on the two sides of the
+        gap: twice as many samples per side as the gap has, and at least a quarter of
+        the shortest stretch of contiguous samples, but never past the next gap. On
+        top of the spline goes white noise, with the standard deviation of the
+        residuals of the fit (from their median absolute deviation, robust to a
+        glitch or to the source in the window). This is enough for gaps short
+        compared to the time scale of the :math:`1/f` noise, :math:`1/f_{\rm knee}`:
+        over longer gaps the spline adds power at low frequency.
+
+        With ``mode="constrained"`` the new samples are a constrained realization
+        (:func:`~tolomeo._signal.realization.fill_gaps`, Hoffman & Ribak 1991):
+        Gaussian noise with the spectrum of the detector, consistent with all its
+        original samples, the flagged ones too, so that the TOD stays continuous at the
+        edges of every gap. The spectrum comes from Welch's method on the stretches of
+        original samples only, with blocks chosen as in
+        :func:`~tolomeo.mapmaking.estimate_inverse_noise`, so that no fill enters it.
+        Below its resolution the spectrum is taken flat: there the data do not
+        constrain it.
+
+        The new samples are flagged (``tod.flags`` False), so that the map leaves them
+        out, and patched (``tod.patched`` True), so that the noise spectra use them
+        (see :attr:`TimeOrderedData.spectrum_flags
+        <tolomeo.tod.TimeOrderedData.spectrum_flags>`). They have no pointing (NaN);
+        the position of the source is copied from the sample before the gap, because
+        :attr:`source` reads it at one sample.
+
+        Parameters
+        ----------
+        mode : {"constrained", "spline"}, optional
+            How the signal in a gap is made: a constrained realization of the noise,
+            or the faster smoothing spline with white noise.
+            Defaults to ``"constrained"``.
+        where : {"gap", "flag", "both"}, optional
+            What is filled: the time gaps, the flagged samples, or both. Only
+            ``"gap"`` is implemented. Defaults to ``"gap"``.
+        side : {"previous", "next"}, optional
+            Subscan that the new samples of a gap between two subscans join: the one
+            before the gap, at its end, or the one after it, at its start.
+            Defaults to ``"previous"``.
+        seed : int or None, optional
+            Seed of the noise of the fill; every detector gets its own generator
+            from it. With the same seed the patch is the same. Defaults to ``0``;
+            None gives a different noise at every call.
+
+        Returns
+        -------
+        :class:`~tolomeo.tod.Scan`
+            A new scan with the samples of the gaps added and ``tod.segments`` moved
+            accordingly; ``offsets`` and ``channel_ids`` are shared, not copied. A copy
+            of this scan if it has no gap.
+
+        Raises
+        ------
+        ValueError
+            If ``mode``, ``where`` or ``side`` is not one of the accepted values.
+        NotImplementedError
+            If ``where`` is ``"flag"`` or ``"both"``: they are not implemented yet.
+
+        Warns
+        -----
+        RuntimeWarning
+            With ``mode="constrained"``, if the conjugate gradient of the constrained
+            realization of a detector does not converge.
+        """
+        mode, where, side = mode.lower(), where.lower(), side.lower()
+        if mode not in ("constrained", "spline"):
+            raise ValueError(f"`mode` must be 'constrained' or 'spline', got {mode!r}.")
+        if where not in ("gap", "flag", "both"):
+            raise ValueError(f"`where` must be 'gap', 'flag' or 'both', got {where!r}.")
+        if side not in ("previous", "next"):
+            raise ValueError(f"`side` must be 'previous' or 'next', got {side!r}.")
+
+        # one generator per detector: a Generator must not be shared between threads
+        rngs = np.random.default_rng(seed).spawn(self.tod.n_det)
+
+        # every kind of patch returns a new scan. With "both" the flagged samples are
+        # filled first: the samples inserted in the gaps are flagged too, and would
+        # otherwise be filled twice
+        scan = self
+        if where in ("flag", "both"):
+            scan = scan._patch_flags(mode, rngs)
+        if where in ("gap", "both"):
+            scan = scan._patch_gaps(mode, side, rngs)
+        return scan
+
+    def _patch_flags(self, mode: str, rngs: list[np.random.Generator]) -> Scan:
+        """Fill the flagged samples in place, as :meth:`patch` with ``where="flag"``."""
+        # TODO(patch): find the runs of flagged samples and fill every run with
+        # _spline_fill, fitted on the good samples around it as _patch_gaps does for
+        # the gaps, then with "constrained" call fill_gaps with the flagged samples as
+        # the gaps; the samples stay flagged and become patched, and no sample is
+        # inserted
+        raise NotImplementedError("`where='flag'` is not implemented yet.")
+
+    def _patch_gaps(
+        self, mode: str, side: str, rngs: list[np.random.Generator]
+    ) -> Scan:
+        """Insert the missing samples of the time gaps, as :meth:`patch` does."""
+        tod, coords = self.tod, self.coordinates
+        sample_rate = tod.sample_rate
+
+        # time from the first sample, in seconds (tod.time is in MJD). A jump is a
+        # time step longer than _JUMP_FACTOR sampling steps: jump_start is the last
+        # sample before it, jump_end the first one after it
+        seconds = (tod.time - tod.time[0]) * 86400
+        steps = np.diff(seconds)
+        jump_start = np.flatnonzero(steps > _JUMP_FACTOR / sample_rate)
+        if jump_start.size == 0:
+            return self.model_copy()
+        jump_end = jump_start + 1
+
+        # number of missing samples in every gap, and for every new sample the index
+        # of the original sample it goes before. np.insert reads all the indices on
+        # the original array, and inserts the values of a repeated index in order
+        gap_len = np.round(steps[jump_start] * sample_rate).astype(int) - 1
+        insert_index = np.repeat(jump_end, gap_len)
+
+        # times of the new samples of every gap, one sampling step apart, in seconds
+        gap_seconds = [
+            seconds[start] + np.arange(1, length + 1) / sample_rate
+            for start, length in zip(jump_start, gap_len, strict=True)
+        ]
+
+        # the original times are kept as they are; the new ones go back to MJD
+        new_times = tod.time[0] + np.concatenate(gap_seconds) / 86400
+        time = np.insert(tod.time, insert_index, new_times)
+
+        # the new samples are flagged, so that the map leaves them out, and patched,
+        # so that the spectra use them
+        flags = np.insert(tod.flags, insert_index, False)
+        patched = (
+            np.zeros(tod.n_samples, dtype=bool) if tod.patched is None else tod.patched
+        )
+        patched = np.insert(patched, insert_index, True)
+
+        # True for the original samples of the new TOD, False for the inserted ones
+        original = np.insert(np.ones(tod.n_samples, dtype=bool), insert_index, False)
+
+        # samples fitted on each side of every gap. run_len is the length of every
+        # stretch of contiguous samples: gap i lies between the stretches i and i + 1.
+        # The window is at least _GAP_FIT_WINDOW_FACTOR times the gap and a quarter of
+        # the shortest stretch, but at most the shorter of the two neighbours, so that
+        # it never reaches the next gap (- 1: on the left the window also takes the
+        # sample jump_start itself)
+        run_len = np.diff(np.r_[0, jump_end, tod.n_samples])
+        window = np.maximum(run_len.min() // 4, _GAP_FIT_WINDOW_FACTOR * gap_len)
+        max_window = np.minimum(run_len[:-1], run_len[1:]) - 1
+        window = np.minimum(window, max_window)
+        fits = [
+            slice(start - w, stop + w)
+            for start, stop, w in zip(jump_start, jump_end, window, strict=True)
+        ]
+
+        if mode == "constrained":
+            # imported here because mapmaking imports tod: at the top of the module
+            # the import would be circular
+            from ..mapmaking._noise import _auto_nperseg
+
+            # Welch blocks that fit in the stretches of original samples, as in
+            # estimate_inverse_noise
+            nperseg = _auto_nperseg(time, original, sample_rate)
+
+        # for every detector, with its own generator, the column with the new samples
+        columns = []
+        for idet, rng in enumerate(rngs):
+            detector = tod.signal[:, idet]
+            if mode == "spline":
+                # the fill of every gap, from the samples of its window
+                fills = [
+                    _spline_fill(seconds[fit], detector[fit], new_seconds, rng)
+                    for fit, new_seconds in zip(fits, gap_seconds, strict=True)
+                ]
+                column = np.insert(detector, insert_index, np.concatenate(fills))
+            else:
+                # fill_gaps does not read the new samples: zeros until it draws them
+                column = np.insert(detector, insert_index, 0.0)
+                column = _constrained_fill(column, original, sample_rate, nperseg, rng)
+            columns.append(column)
+        signal = np.column_stack(columns)
+
+        # every subscan boundary moves by the number of new samples before it, which
+        # searchsorted counts. For a gap right on a boundary, side="right" counts its
+        # samples as before the boundary (they join the previous subscan), "left" as
+        # after it (they join the next one)
+        n_before = np.searchsorted(
+            insert_index, tod.segments, side="right" if side == "previous" else "left"
+        )
+        segments = tod.segments + n_before
+
+        # no pointing for the new samples (NaN: they fall outside every map); the
+        # position of the source, when there is one, is copied from the sample before
+        # the gap
+        pointing = {
+            name: np.insert(getattr(coords, name), insert_index, np.nan)
+            for name in ("ra", "dec", "az", "el", "par_angle")
+        }
+        for name in ("source_ra", "source_dec"):
+            values = getattr(coords, name)
+            if values is not None:
+                pointing[name] = np.insert(
+                    values, insert_index, values[insert_index - 1]
+                )
+
+        new_tod = tod.model_copy(
+            update={
+                "signal": signal,
+                "time": time,
+                "flags": flags,
+                "segments": segments,
+                "patched": patched,
+            }
+        )
+        return self.model_copy(
+            update={"tod": new_tod, "coordinates": coords.model_copy(update=pointing)}
+        )
+
+
+def _spline_fill(
+    x: NDArray[np.float64],
+    y: NDArray[np.float64],
+    x_new: NDArray[np.float64],
+    rng: np.random.Generator,
+) -> NDArray[np.float64]:
+    """
+    Signal at the times ``x_new``, from the samples ``(x, y)`` around them.
+
+    A smoothing spline fitted on ``(x, y)``, with the smoothing chosen by generalized
+    cross-validation, plus white noise with the standard deviation of the residuals
+    of the fit: the spline gives the slow part of the signal, the noise its
+    fluctuations.
+    """
+    spline = make_smoothing_spline(x, y)
+
+    # scale="normal" turns the median absolute deviation of the residuals into a
+    # standard deviation for Gaussian noise (x 1.4826)
+    sigma = median_abs_deviation(y - spline(x), scale="normal")
+    return spline(x_new) + sigma * rng.standard_normal(x_new.size)
+
+
+def _constrained_fill(
+    column: NDArray[np.float64],
+    original: NDArray[np.bool_],
+    sample_rate: float,
+    nperseg: int,
+    rng: np.random.Generator,
+) -> NDArray[np.float64]:
+    """
+    ``column`` with its inserted samples drawn as a constrained realization.
+
+    The PSD comes from :func:`_welch_on_runs` on the original samples, with the floor
+    of :func:`~tolomeo.mapmaking.estimate_inverse_noise` so that every variance is
+    positive. :func:`~tolomeo._signal.realization.fill_gaps` then keeps the original
+    samples and draws the inserted ones.
+    """
+    # imported here because mapmaking imports tod (see _patch_gaps)
+    from ..mapmaking._noise import _FLOOR_FACTOR
+
+    # fill_gaps wants a TOD with zero mean
+    mean = column[original].mean()
+    x = column - mean
+
+    freqs, psd = _welch_on_runs(x, original, sample_rate, nperseg)
+    psd = np.maximum(psd, np.median(psd) * _FLOOR_FACTOR)
+    variances = rfft_variances(freqs, psd, x.size, sample_rate)
+    filled = fill_gaps(x, original, variances, rng)
+
+    # only the inserted samples are written: adding the mean back to the whole column
+    # would move the original samples by a rounding error
+    out = column.copy()
+    out[~original] = filled[~original] + mean
+    return out
+
+
+def _welch_on_runs(
+    x: NDArray[np.float64],
+    good: NDArray[np.bool_],
+    sample_rate: float,
+    nperseg: int,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Welch's method on the runs of good samples only.
+
+    Every run of contiguous good samples at least ``nperseg`` long gets its own
+    estimate, with the blocks of :func:`scipy.signal.welch` (Hann window, half
+    overlap); the estimates are averaged with the number of blocks of each run as
+    weight, which is the average over all the blocks. No block crosses a bad sample,
+    so the values of the bad samples never enter the spectrum.
+
+    Returns
+    -------
+    freqs, psd : :class:`~numpy.ndarray` of float64
+        Frequencies, in Hz, and one-sided PSD. Shape ``(nperseg // 2 + 1,)``.
+    """
+    # first and one-past-last sample of every run of good samples
+    edges = np.flatnonzero(np.diff(np.r_[0, good.astype(np.int8), 0]))
+    freqs = np.fft.rfftfreq(nperseg, 1 / sample_rate)
+    total, n_blocks = np.zeros(freqs.size), 0
+    for start, stop in zip(edges[::2], edges[1::2], strict=True):
+        if stop - start < nperseg:
+            continue
+        # blocks of welch with noverlap = nperseg // 2; the tail that does not fill a
+        # block is dropped
+        n = (stop - start - nperseg) // (nperseg // 2) + 1
+        _, psd = welch(x[start:stop], fs=sample_rate, window="hann", nperseg=nperseg)
+        total += n * psd
+        n_blocks += n
+    return freqs, total / n_blocks
