@@ -256,6 +256,11 @@ class Scan(BaseModel):
         Below its resolution the spectrum is taken flat: there the data do not
         constrain it.
 
+        Every chunk of the TOD (``tod.chunks``, one per directory of the scan) is
+        patched by itself: the jump between two chunks is not filled, the fit windows
+        stop at their boundaries, and the constrained realization of a chunk has the
+        spectrum of that chunk only.
+
         The new samples are flagged (``tod.flags`` False), so that the map leaves them
         out, and patched (``tod.patched`` True), so that the noise spectra use them
         (see :attr:`TimeOrderedData.spectrum_flags
@@ -284,9 +289,9 @@ class Scan(BaseModel):
         Returns
         -------
         :class:`~tolomeo.tod.Scan`
-            A new scan with the samples of the gaps added and ``tod.segments`` moved
-            accordingly; ``offsets`` and ``channel_ids`` are shared, not copied. A copy
-            of this scan if it has no gap.
+            A new scan with the samples of the gaps added, and ``tod.segments`` and
+            ``tod.chunks`` moved accordingly; ``offsets`` and ``channel_ids`` are
+            shared, not copied. A copy of this scan if it has no gap inside a chunk.
 
         Raises
         ------
@@ -339,14 +344,23 @@ class Scan(BaseModel):
         sample_rate = tod.sample_rate
 
         # time from the first sample, in seconds (tod.time is in MJD). A jump is a
-        # time step longer than _JUMP_FACTOR sampling steps: jump_start is the last
-        # sample before it, jump_end the first one after it
+        # time step longer than _JUMP_FACTOR sampling steps; jump_end is the first
+        # sample after it
         seconds = (tod.time - tod.time[0]) * 86400
         steps = np.diff(seconds)
-        jump_start = np.flatnonzero(steps > _JUMP_FACTOR / sample_rate)
-        if jump_start.size == 0:
+        jump_end = np.flatnonzero(steps > _JUMP_FACTOR / sample_rate) + 1
+
+        # first row of every stretch of contiguous samples, and n_samples at the end:
+        # a stretch ends at every jump and at every boundary of chunks, also one with
+        # no jump in time (sorted and unique, with 0 and n_samples from tod.chunks)
+        edges = np.union1d(jump_end, tod.chunks)
+
+        # only the jumps inside a chunk are filled: two chunks are independent, and
+        # the time between them (minutes to days) is not a gap of the TOD
+        jump_end = jump_end[~np.isin(jump_end, tod.chunks)]
+        if jump_end.size == 0:
             return self.model_copy()
-        jump_end = jump_start + 1
+        jump_start = jump_end - 1  # the last sample before the jump
 
         # number of missing samples in every gap, and for every new sample the index
         # of the original sample it goes before. np.insert reads all the indices on
@@ -375,29 +389,45 @@ class Scan(BaseModel):
         # True for the original samples of the new TOD, False for the inserted ones
         original = np.insert(np.ones(tod.n_samples, dtype=bool), insert_index, False)
 
-        # samples fitted on each side of every gap. run_len is the length of every
-        # stretch of contiguous samples: gap i lies between the stretches i and i + 1.
-        # The window is at least _GAP_FIT_WINDOW_FACTOR times the gap and a quarter of
-        # the shortest stretch, but at most the shorter of the two neighbours, so that
-        # it never reaches the next gap (- 1: on the left the window also takes the
-        # sample jump_start itself)
-        run_len = np.diff(np.r_[0, jump_end, tod.n_samples])
-        window = np.maximum(run_len.min() // 4, _GAP_FIT_WINDOW_FACTOR * gap_len)
-        max_window = np.minimum(run_len[:-1], run_len[1:]) - 1
-        window = np.minimum(window, max_window)
-        fits = [
-            slice(start - w, stop + w)
-            for start, stop, w in zip(jump_start, jump_end, window, strict=True)
-        ]
+        # every boundary moves by the number of new samples before it, which
+        # searchsorted counts. For a gap right on a boundary of subscans,
+        # side="right" counts its samples as before the boundary (they join the
+        # previous subscan), "left" as after it (they join the next one). No sample
+        # goes on a boundary of chunks, so there the side does not matter
+        n_before = np.searchsorted(
+            insert_index, tod.segments, side="right" if side == "previous" else "left"
+        )
+        segments = tod.segments + n_before
+        chunks = tod.chunks + np.searchsorted(insert_index, tod.chunks)
 
-        if mode == "constrained":
+        if mode == "spline":
+            # samples fitted on each side of every gap: at least _GAP_FIT_WINDOW_FACTOR
+            # times the gap and a quarter of the shortest stretch, but at most the
+            # shorter of the two stretches next to the gap, so that the window never
+            # reaches another gap or another chunk (- 1: on the left the window also
+            # takes the sample jump_start itself). edges[k] is jump_end, so the two
+            # stretches are edges[k - 1]:jump_end and jump_end:edges[k + 1]
+            k = np.searchsorted(edges, jump_end)
+            room = np.minimum(jump_end - edges[k - 1], edges[k + 1] - jump_end) - 1
+            window = np.maximum(
+                np.diff(edges).min() // 4, _GAP_FIT_WINDOW_FACTOR * gap_len
+            )
+            window = np.minimum(window, room)
+            fits = [
+                slice(start - w, stop + w)
+                for start, stop, w in zip(jump_start, jump_end, window, strict=True)
+            ]
+        else:
             # imported here because mapmaking imports tod: at the top of the module
             # the import would be circular
             from ..mapmaking._noise import _auto_nperseg
 
-            # Welch blocks that fit in the stretches of original samples, as in
-            # estimate_inverse_noise
-            nperseg = _auto_nperseg(time, original, sample_rate)
+            # Welch blocks of every chunk, chosen as in estimate_inverse_noise on the
+            # stretches of original samples of that chunk
+            npersegs = [
+                _auto_nperseg(time[a:b], original[a:b], sample_rate)
+                for a, b in pairwise(chunks)
+            ]
 
         # for every detector, with its own generator, the column with the new samples
         columns = []
@@ -411,20 +441,17 @@ class Scan(BaseModel):
                 ]
                 column = np.insert(detector, insert_index, np.concatenate(fills))
             else:
-                # fill_gaps does not read the new samples: zeros until it draws them
+                # fill_gaps does not read the new samples: zeros until it draws them.
+                # One chunk at a time, with its own spectrum; a chunk with no new
+                # sample is left as it is
                 column = np.insert(detector, insert_index, 0.0)
-                column = _constrained_fill(column, original, sample_rate, nperseg, rng)
+                for (a, b), nperseg in zip(pairwise(chunks), npersegs, strict=True):
+                    if not original[a:b].all():
+                        column[a:b] = _constrained_fill(
+                            column[a:b], original[a:b], sample_rate, nperseg, rng
+                        )
             columns.append(column)
         signal = np.column_stack(columns)
-
-        # every subscan boundary moves by the number of new samples before it, which
-        # searchsorted counts. For a gap right on a boundary, side="right" counts its
-        # samples as before the boundary (they join the previous subscan), "left" as
-        # after it (they join the next one)
-        n_before = np.searchsorted(
-            insert_index, tod.segments, side="right" if side == "previous" else "left"
-        )
-        segments = tod.segments + n_before
 
         # no pointing for the new samples (NaN: they fall outside every map); the
         # position of the source, when there is one, is copied from the sample before
@@ -446,6 +473,7 @@ class Scan(BaseModel):
                 "time": time,
                 "flags": flags,
                 "segments": segments,
+                "chunks": chunks,
                 "patched": patched,
             }
         )

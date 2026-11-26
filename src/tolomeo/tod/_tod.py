@@ -3,7 +3,7 @@ from __future__ import annotations
 import astropy.units as u
 import numpy as np
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from .._lib.units import _conversion_factor
 
@@ -26,6 +26,13 @@ class TimeOrderedData(BaseModel):
     segments : :class:`~numpy.ndarray` of int64
         First row of every subscan, followed by ``n_samples``: subscan ``k`` is
         ``signal[segments[k]:segments[k + 1]]``. Shape ``(n_subscans + 1,)``.
+    chunks : :class:`~numpy.ndarray` of int64, optional
+        First row of every chunk, followed by ``n_samples``: chunk ``k`` is
+        ``signal[chunks[k]:chunks[k + 1]]``, made of whole subscans. A chunk is a part
+        of the TOD with its own noise, independent of the others, as one directory of
+        the ``tod_dirs`` of :func:`~tolomeo.io.read_scan`: nothing is filled across
+        its boundaries. Shape ``(n_chunks + 1,)``. Defaults to ``[0, n_samples]``:
+        the whole TOD is one chunk.
     patched : :class:`~numpy.ndarray` of bool, optional
         True for a sample whose signal is synthetic, written by
         :meth:`Scan.patch <tolomeo.tod.Scan.patch>`, the same for all the detectors.
@@ -51,9 +58,17 @@ class TimeOrderedData(BaseModel):
     time: NDArray[np.float64]  # shape (n_samples,)
     flags: NDArray[np.bool_]  # shape (n_samples,)
     segments: NDArray[np.int64]
+    chunks: NDArray[np.int64] | None = None  # None: one chunk, see _one_chunk
     patched: NDArray[np.bool_] | None = None  # shape (n_samples,)
     passband: tuple[float, float] | None = None
     unit: str | None = "rad"
+
+    @model_validator(mode="after")
+    def _one_chunk(self) -> TimeOrderedData:
+        """Without ``chunks`` the whole TOD is one chunk: ``[0, n_samples]``."""
+        if self.chunks is None:
+            self.chunks = np.array([0, self.n_samples], dtype=np.int64)
+        return self
 
     def select(
         self, mask: NDArray[np.bool_]
@@ -69,8 +84,8 @@ class TimeOrderedData(BaseModel):
         Returns
         -------
         :class:`~tolomeo.tod.TimeOrderedData`
-            A new object with ``n_samples = mask.sum()``; ``segments`` is moved to the
-            positions of the kept samples. The arrays are copies.
+            A new object with ``n_samples = mask.sum()``; ``segments`` and ``chunks``
+            are moved to the positions of the kept samples. The arrays are copies.
 
         Raises
         ------
@@ -86,12 +101,16 @@ class TimeOrderedData(BaseModel):
                 f"`mask` must have shape ({self.n_samples},), got {mask.shape}."
             )
 
+        # for every original row i, the number of kept rows before it: a boundary at
+        # row i (of a subscan or of a chunk) moves to new_index[i]
+        new_index = np.concatenate(([0], np.cumsum(mask)))
         return self.model_copy(
             update={
                 "signal": self.signal[mask, :],
                 "time": self.time[mask],
                 "flags": self.flags[mask],
-                "segments": np.concatenate(([0], np.cumsum(mask)))[self.segments],
+                "segments": new_index[self.segments],
+                "chunks": new_index[self.chunks],
                 "patched": None if self.patched is None else self.patched[mask],
             }
         )

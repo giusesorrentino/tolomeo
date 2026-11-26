@@ -70,7 +70,8 @@ def test_read_scan_accepts_a_str(tmp_path):
 
 
 def test_read_scan_several_directories(tmp_path):
-    # Check that the scans are joined in the given order, one segment per subscan.
+    # Check that the scans are joined in the given order, one segment per subscan and
+    # one chunk per directory.
     first, second = _scan(seed=1), _scan(seed=2)
     first_dir, beammap = write_scan_dir(tmp_path / "first", first)
     second_dir, _ = write_scan_dir(tmp_path / "second", second)
@@ -82,6 +83,9 @@ def test_read_scan_several_directories(tmp_path):
     )
     np.testing.assert_array_equal(
         read.tod.segments, np.arange(2 * N_SUBSCANS + 1) * SUBSCAN_LEN
+    )
+    np.testing.assert_array_equal(
+        read.tod.chunks, np.arange(3) * N_SUBSCANS * SUBSCAN_LEN
     )
 
 
@@ -264,7 +268,7 @@ def test_read_scan_not_a_directory_raises(tmp_path):
 
 
 def test_read_scan_no_fits_raises(tmp_path):
-    with pytest.raises(FileNotFoundError, match=r"No FITS subscans"):
+    with pytest.raises(FileNotFoundError, match=r"does not contain any subscan"):
         read_scan(tmp_path, tmp_path / "beammap.dat")
 
 

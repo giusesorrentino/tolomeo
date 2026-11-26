@@ -96,6 +96,7 @@ def read_scan(
     dirs = [ScanSpec(path=d) if not isinstance(d, ScanSpec) else d for d in dirs]
 
     fits_files = []
+    subscans_per_chunk = []
 
     for spec in dirs:
         if not spec.path.is_dir():
@@ -104,8 +105,13 @@ def read_scan(
         # sorting by name keeps the subscans in time order
         files = sorted(spec.path.glob("*.fit*", case_sensitive=False))
 
+        if not files:
+            raise FileNotFoundError(f"{spec.path} does not contain any subscan.")
+
         for f in files:
             fits_files.append((f, spec))
+
+        subscans_per_chunk.append(len(files))
 
     if not fits_files:
         raise FileNotFoundError("No FITS subscans found in the given directories.")
@@ -144,6 +150,11 @@ def read_scan(
     # start index of each subscan, the last value is the total number of samples
     segments = np.concatenate(([0], np.cumsum(lengths)))
 
+    # one chunk per directory: the first subscan of every chunk, followed by the
+    # number of subscans, then through segments the first row of every chunk
+    first_subscans = np.concatenate(([0], np.cumsum(subscans_per_chunk)))
+    chunks = segments[first_subscans]
+
     coords = Coordinates(
         ra=np.concatenate([s.ra for s in subscans]),
         dec=np.concatenate([s.dec for s in subscans]),
@@ -162,6 +173,7 @@ def read_scan(
         time=np.concatenate([s.time for s in subscans]),
         flags=np.concatenate([s.flags for s in subscans]),
         segments=segments,
+        chunks=chunks,
     )
     offsets = {"lon": lon_offset, "lat": lat_offset}  # radians, one value per detector
 
