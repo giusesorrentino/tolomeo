@@ -69,14 +69,20 @@ def calibrate(
     signal = scan.tod.signal / responsivity[None, :]
 
     if tau_atm is not None:
-        el = scan.coordinates.el
-        with np.errstate(divide="ignore", invalid="ignore"):
-            transmission = np.exp(-tau_atm / np.sin(el))
-
-        # where the elevation is not valid there is nothing to correct (NaN, or 0)
-        transmission = np.where((el > 0) & (transmission > 0), transmission, 1.0)
-        signal /= transmission[:, None]
+        signal /= _transmission(scan.coordinates.el, tau_atm)[:, None]
 
     return scan.model_copy(
         update={"tod": scan.tod.model_copy(update={"signal": signal, "unit": "K"})}
     )
+
+
+def _transmission(el: NDArray[np.float64], tau_atm: float) -> NDArray[np.float64]:
+    """
+    Transmission of the atmosphere at every sample, ``exp(-tau_atm / sin(el))``.
+
+    Where the elevation is not valid (not finite, or not positive) it is 1: there is
+    nothing to correct. ``el`` is in radians. Shape ``(n_samples,)``.
+    """
+    with np.errstate(divide="ignore", invalid="ignore"):
+        transmission = np.exp(-tau_atm / np.sin(el))
+    return np.where((el > 0) & (transmission > 0), transmission, 1.0)
