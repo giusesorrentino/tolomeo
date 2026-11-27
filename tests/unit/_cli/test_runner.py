@@ -18,6 +18,7 @@ from tolomeo._cli.config import (
     MapMakingConfig,
     NoiseConfig,
     OutputConfig,
+    PatchConfig,
     RunConfig,
 )
 from tolomeo._cli.runner import RunMapmaker
@@ -127,7 +128,20 @@ def test_header(tmp_path):
     assert header["MAXITER"][0] == 50
     assert header["MINHITS"][0] == 0.2
     assert header["NDET"] == 99  # the keywords of output.header come last
+    assert header["PATCH"][0] is False
     assert "TATM" not in header
+    assert "PATCHMOD" not in header
+
+
+def test_header_with_patch(tmp_path):
+    config = _config(tmp_path, patch=PatchConfig(mode="spline", where="both"))
+    inv_noise = estimate_inverse_noise(config.scan, nperseg=128, workers=1)
+
+    header = RunMapmaker(config)._header(config.scan, inv_noise)
+
+    assert header["PATCH"][0] is True
+    assert header["PATCHMOD"][0] == "spline"
+    assert header["PATCHWHR"][0] == "both"
 
 
 def test_header_with_calibration(tmp_path):
@@ -142,6 +156,34 @@ def test_header_with_calibration(tmp_path):
     assert header["TAUATM"][0] == 0.1
     assert header["OPACORR"][0] is True
     assert "MINHITS" not in header
+
+
+def test_patch_without_patch_returns_the_scan(tmp_path):
+    config = _config(tmp_path)
+
+    assert RunMapmaker(config)._patch(config.scan) is config.scan
+
+
+def test_patch_passes_where(tmp_path, monkeypatch):
+    # Check that every field of config.patch, `where` included, and the workers of
+    # config.mapmaking reach Scan.patch.
+    config = _config(tmp_path, patch=PatchConfig(where="both", seed=3))
+    received = {}
+
+    def fake_patch(self, **kwargs):
+        received.update(kwargs)
+        return self
+
+    monkeypatch.setattr("tolomeo.tod.Scan.patch", fake_patch)
+    RunMapmaker(config)._patch(config.scan)
+
+    assert received == {
+        "mode": "constrained",
+        "where": "both",
+        "side": "previous",
+        "seed": 3,
+        "workers": 1,
+    }
 
 
 def test_calibrate_without_calibration_returns_the_scan(tmp_path):

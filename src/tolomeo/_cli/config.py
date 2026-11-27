@@ -1,10 +1,9 @@
 """
 Configuration of the command line: the YAML file that ``tolomeo`` reads.
 
-The sections follow the pipeline ``read_scan -> process_tod -> MapGeometry ->
-estimate_inverse_noise -> gls_map -> write_map``; each key is an argument of one of those
-functions. Only ``scan`` and
-``output`` are required.
+The sections follow the pipeline ``read_scan -> process_tod -> Scan.patch ->
+MapGeometry -> estimate_inverse_noise -> gls_map -> write_map``; each key is an argument
+of one of those functions. Only ``scan`` and ``output`` are required.
 
 Example::
 
@@ -39,6 +38,12 @@ Example::
       steps:
         - type: baseline
         - type: common_mode
+
+    patch:                           # optional, after `filtering`: Scan.patch; `patch:`
+      mode: constrained              #   alone uses the defaults. constrained | spline
+      where: both                    # gap | flag | both; default gap
+      side: previous                 # previous | next: the subscan the new samples join
+      seed: 0                        # seed of the noise of the fill
 
     noise:                           # arguments of estimate_inverse_noise
       nperseg: 8192                  # samples per block (even); optional, default: auto
@@ -87,7 +92,7 @@ the same::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import astropy.units as u
 import yaml
@@ -249,6 +254,28 @@ class CalibrationConfig(BaseModel):
         return skydip_dir if isinstance(skydip_dir, list | tuple) else [skydip_dir]
 
 
+class PatchConfig(BaseModel):
+    """
+    The filling of the holes of the TOD (arguments of ``Scan.patch``).
+
+    ``mode`` is how a hole is filled: ``constrained``, a constrained realization of
+    the noise, or ``spline``, a least-squares spline with white noise. ``where`` is what
+    is filled: the time gaps between subscans (``gap``), the flagged samples
+    (``flag``), or both. ``side`` is the subscan that the samples inserted in a gap
+    join, the one before it or the one after it, and ``seed`` the seed of the noise of
+    the fill. The threads are ``mapmaking.workers``. Without the section the scan is
+    not patched; ``patch:`` alone uses the defaults: ``constrained``, ``gap``,
+    ``previous`` and ``0``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["constrained", "spline"] = "constrained"
+    where: Literal["gap", "flag", "both"] = "gap"
+    side: Literal["previous", "next"] = "previous"
+    seed: int | None = 0
+
+
 class OutputConfig(BaseModel):
     """
     Where the results go.
@@ -299,6 +326,7 @@ class RunConfig(BaseModel):
     geometry: MapGeometry
     calibration: CalibrationConfig | None = None
     filtering: FilteringConfig = Field(default_factory=FilteringConfig)
+    patch: PatchConfig | None = None
     noise: NoiseConfig = Field(default_factory=NoiseConfig)
     mapmaking: MapMakingConfig = Field(default_factory=MapMakingConfig)
     # text of the YAML file, written in the FITS map (None if not built from a file)
@@ -404,6 +432,12 @@ class RunConfig(BaseModel):
             raw_filtering = raw.get("filtering") or {}
             filtering = FilteringConfig(**raw_filtering)
 
+            # the `patch` field is optional: without it the scan is not patched, and an
+            # empty section (`patch:` alone) means the default values
+            patch = None
+            if "patch" in raw:
+                patch = PatchConfig(**(raw["patch"] or {}))
+
             # the `noise` field is optional (uses the default values)
             raw_noise = raw.get("noise") or {}
             noise = NoiseConfig(**raw_noise)
@@ -466,6 +500,7 @@ class RunConfig(BaseModel):
             geometry=geometry,
             calibration=calibration,
             filtering=filtering,
+            patch=patch,
             noise=noise,
             mapmaking=mapmaking,
             output=output,

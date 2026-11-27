@@ -16,6 +16,7 @@ from tolomeo._cli.config import (
     MapMakingConfig,
     NoiseConfig,
     OutputConfig,
+    PatchConfig,
     RunConfig,
 )
 from tolomeo.map import MapGeometry
@@ -73,6 +74,32 @@ def test_noise_config_unknown_key_raises():
 # -----------------------------------------------------------------------------
 # MapMakingConfig, CalibrationConfig, OutputConfig
 # -----------------------------------------------------------------------------
+
+
+def test_patch_config_defaults():
+    config = PatchConfig()
+
+    assert config.mode == "constrained"
+    assert config.where == "gap"
+    assert config.side == "previous"
+    assert config.seed == 0
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        (RUN_YAML, None),
+        (RUN_YAML + "patch:\n", PatchConfig()),
+        (RUN_YAML + "patch:\n  where: both\n", PatchConfig(where="both")),
+    ],
+    ids=["absent", "empty", "where"],
+)
+def test_from_yaml_patch_section(tmp_path, text, expected):
+    # Check that without the section there is no patch, and that `patch:` alone
+    # means the default values.
+    config = RunConfig.from_yaml(write_run(tmp_path, text))
+
+    assert config.patch == expected
 
 
 def test_mapmaking_config_defaults():

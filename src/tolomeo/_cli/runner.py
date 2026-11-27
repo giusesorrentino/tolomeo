@@ -56,6 +56,9 @@ class RunMapmaker:
 
         scan = self._clean(self.config.scan, self.config.geometry)
         scan = self._calibrate(scan)
+        # scan = self._calibrate(self.config.scan)
+        # scan = self._clean(scan, self.config.geometry)
+        scan = self._patch(scan)
         inv_noise = self._estimate_noise(scan)
         # after the noise estimate: NPERSEG is the value used, also when it is automatic
         header = self._header(self.config.scan, inv_noise)
@@ -70,8 +73,9 @@ class RunMapmaker:
 
         ``TELESCOP`` and ``INSTRUME`` (``scan.telescope`` and ``scan.instrument``, if not
         None), ``DATE-OBS`` and ``MJD-OBS`` (first sample), ``NDET``, ``CALIB`` and, with a
-        calibration, ``TATM`` and ``TAUATM``, then ``NPERSEG`` (from ``inv_noise``, so
-        it is the value used also when ``noise.nperseg`` is ``auto``), ``GLSTOL``,
+        calibration, ``TATM`` and ``TAUATM``, ``PATCH`` and, with a ``patch`` section,
+        ``PATCHMOD`` and ``PATCHWHR``, then ``NPERSEG`` (from ``inv_noise``, so it is
+        the value used also when ``noise.nperseg`` is ``auto``), ``GLSTOL``,
         ``MAXITER`` and ``MINHITS``. The keywords of ``config.output.header`` come last,
         so they replace these if they have the same name.
         """
@@ -97,6 +101,11 @@ class RunMapmaker:
                 config.calibration.correct_opacity,
                 "Divided by the transmission",
             )
+
+        header["PATCH"] = (config.patch is not None, "Holes of the TOD filled")
+        if config.patch is not None:
+            header["PATCHMOD"] = (config.patch.mode, "How the holes are filled")
+            header["PATCHWHR"] = (config.patch.where, "Holes filled: gap, flag, both")
 
         header["NPERSEG"] = (inv_noise.nperseg, "Samples per noise block")
         header["GLSTOL"] = (config.mapmaking.tol, "Tolerance of the solver")
@@ -166,6 +175,29 @@ class RunMapmaker:
             f"[PROCESSING] Cleaning completed in {time.perf_counter() - t0:.2f}s"
         )
 
+        return scan
+
+    def _patch(self, scan: Scan) -> Scan:
+        """
+        ``scan.patch(...)`` with the fields of ``config.patch``.
+
+        ``mode``, ``where``, ``side`` and ``seed`` map one to one onto its arguments
+        (same names); the threads are ``config.mapmaking.workers``. Without a
+        ``patch`` section it returns ``scan`` itself.
+        """
+        patch = self.config.patch
+        if patch is None:
+            return scan
+
+        t0 = time.perf_counter()
+        logger.info(
+            f"[PROCESSING] Starting to patch the TOD (mode {patch.mode}, "
+            f"where {patch.where})"
+        )
+
+        scan = scan.patch(**patch.model_dump(), workers=self.config.mapmaking.workers)
+
+        logger.info(f"[PROCESSING] TOD patched in {time.perf_counter() - t0:.2f}s")
         return scan
 
     def _estimate_noise(self, scan: Scan) -> InverseNoise:
