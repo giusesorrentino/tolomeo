@@ -19,10 +19,11 @@ Hoffman, Y. & Ribak, E. 1991, ApJ, 380, L5.
 Stompor, R. et al. 2002, Phys. Rev. D, 65, 022003.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 from numpy.typing import NDArray
 from scipy.fft import irfft, rfft
-from scipy.sparse.linalg import LinearOperator, cg
 
 from .._lib.messages import _warn
 
@@ -108,7 +109,7 @@ def fill_gaps(
     variances: NDArray[np.float64],
     rng: np.random.Generator,
     *,
-    tol: float = 1e-8,
+    tol: float = 1e-5,
     maxiter: int | None = None,
 ) -> NDArray[np.float64]:
     r"""
@@ -138,10 +139,10 @@ def fill_gaps(
     rng : :class:`~numpy.random.Generator`
         Source of the random numbers of :math:`\tilde{\mathbf{n}}`.
     tol : float, optional
-        Relative residual at which the conjugate gradient stops. Defaults to ``1e-8``.
+        Relative residual at which the conjugate gradient stops. Defaults to ``1e-5``.
     maxiter : int, optional
-        Maximum iterations of the conjugate gradient. Defaults to ``None``: the
-        default of :func:`scipy.sparse.linalg.cg`.
+        Maximum iterations of the conjugate gradient. Defaults to ``None``: ten times
+        the number of samples in the gaps, as :func:`scipy.sparse.linalg.cg`.
 
     Returns
     -------
@@ -170,23 +171,60 @@ def fill_gaps(
     def gap_precision(y: NDArray[np.float64]) -> NDArray[np.float64]:
         """Q_gg y: ``y`` in the gaps of a vector of zeros, Q, and the gaps again."""
         v = np.zeros(n_samples)
-        v[gaps] = np.ravel(y)
+        v[gaps] = y
         return _apply_precision(v, variances)[gaps]
 
-    # Q_gg is never built: the conjugate gradient only needs its product with a vector
-    n_gaps = b.size
-    op = LinearOperator(shape=(n_gaps, n_gaps), matvec=gap_precision, dtype=np.float64)
-    y, info = cg(A=op, b=b, rtol=tol, maxiter=maxiter)
-    if info > 0:
-        _warn(
-            f"The conjugate gradient of the gap filling did not reach rtol = {tol} in "
-            f"{info} iterations: the gaps are filled with its last iterate.",
-            RuntimeWarning,
-        )
+    y = _conjugate_gradient(gap_precision, b, tol, maxiter)
 
     out = tod.copy()
     out[gaps] = noise[gaps] + y
     return out
+
+
+def _conjugate_gradient(
+    matvec: Callable[[NDArray[np.float64]], NDArray[np.float64]],
+    b: NDArray[np.float64],
+    tol: float,
+    maxiter: int | None,
+) -> NDArray[np.float64]:
+    r"""
+    Solve :math:`A\mathbf{y} = \mathbf{b}` for a symmetric positive definite
+    :math:`A`, given only as ``matvec``, the product with a vector.
+
+    The plain conjugate gradient, as :func:`scipy.sparse.linalg.cg`, from
+    :math:`\mathbf{y} = 0`, and stopped when
+    :math:`\|\mathbf{r}\| \le` ``tol`` :math:`\|\mathbf{b}\|`. It is written
+    out because the dot products of SciPy go through BLAS, whose own threads compete
+    with the threads of the callers (:meth:`~tolomeo.tod.Scan.patch` fills the
+    detectors in parallel); the sums of numpy here stay on the calling thread. With
+    ``maxiter`` None, ten times the size of ``b``, as SciPy. A ``RuntimeWarning`` if
+    ``tol`` is not reached: then ``y`` is the last iterate.
+    """
+    maxiter = 10 * b.size if maxiter is None else maxiter
+    stop = tol**2 * (b * b).sum()
+
+    y = np.zeros_like(b)
+    r = b.copy()  # the residual b - A y, with y = 0
+    p = r.copy()  # the search direction
+    rr = (r * r).sum()
+    for _ in range(maxiter):
+        if rr <= stop:
+            break
+        ap = matvec(p)
+        alpha = rr / (p * ap).sum()
+        y += alpha * p
+        r -= alpha * ap
+        rr_new = (r * r).sum()
+        p = r + (rr_new / rr) * p
+        rr = rr_new
+
+    if rr > stop:
+        _warn(
+            f"The conjugate gradient of the gap filling did not reach rtol = {tol} in "
+            f"{maxiter} iterations: the gaps are filled with its last iterate.",
+            RuntimeWarning,
+        )
+    return y
 
 
 def _apply_precision(
