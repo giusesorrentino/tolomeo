@@ -220,9 +220,11 @@ class Scan(BaseModel):
         return self.model_copy(update={"tod": tod})
 
     # TODO(patch):
-    # - iterate the constrained realization (fill, Welch with long blocks on the filled
-    #   TOD, fill again), so that the spectrum below the resolution of the stretches of
-    #   good samples comes from the data and not from the flat extension;
+    # - the spectrum below the resolution of the stretches of known samples is the flat
+    #   extension. Iterating (fill, Welch with long blocks on the filled TOD, fill
+    #   again) does not fix it: in simulations with the holes of MISTRAL it settles on
+    #   a spectrum 1.5 (1/f^1.2) to 3-5 (1/f^2) times the true one at low frequency
+    #   (code in .tolomeo/backup/_scan_with_niter.py);
     # - a maximum gap length (a long stop of the telescope would take GB).
     # See also the gap filling of sotodlib:
     # https://sotodlib.readthedocs.io/en/latest/_modules/sotodlib/tod_ops/gapfill.html
@@ -235,7 +237,7 @@ class Scan(BaseModel):
         workers: int | None = -1,
     ) -> Scan:
         r"""
-        The same scan with its holes filled: the time gaps, the flagged samples, or both.
+        The same scan with its holes filled: the time gaps, the flagged samples or both.
 
         A gap is a jump in ``tod.time`` longer than 1.5 sampling steps, as between two
         subscans: the missing samples are inserted, one sampling step apart, so that
@@ -252,11 +254,12 @@ class Scan(BaseModel):
         are every 0.5 s (``_SPLINE_KNOT_SPACING``) on the two sides and none inside the
         hole, so that it crosses the hole with one cubic. A hole with known samples on
         one side only (at the start or the end of a chunk) gets their mean instead,
-        since a spline would extrapolate. On top goes white noise, with the standard deviation of the
-        residuals of the fit (from their median absolute deviation, robust to a
-        glitch or to the source in the window). This is enough for holes short
-        compared to the time scale of the :math:`1/f` noise, :math:`1/f_{\rm knee}`:
-        over longer holes the spline adds power at low frequency.
+        since a spline would extrapolate. On top goes white noise, with the standard
+        deviation of the residuals of the fit (from their median absolute deviation,
+        robust to a glitch or to the source in the window). This is enough for holes
+        short compared to the time scale of the :math:`1/f` noise,
+        :math:`1/f_{\rm knee}`: over longer holes the spline adds power at low
+        frequency.
 
         With ``mode="constrained"`` the holes are a constrained realization
         (:func:`~tolomeo._signal.realization.fill_gaps`, Hoffman & Ribak 1991):
@@ -286,7 +289,7 @@ class Scan(BaseModel):
         ----------
         mode : {"constrained", "spline"}, optional
             How the signal in a gap is made: a constrained realization of the noise,
-            or the faster smoothing spline with white noise.
+            or the faster least-squares spline with white noise.
             Defaults to ``"constrained"``.
         where : {"gap", "flag", "both"}, optional
             What is filled: the time gaps (inserting their samples), the flagged
