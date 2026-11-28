@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
 from time import perf_counter
 
 import numpy as np
@@ -332,7 +333,7 @@ def estimate_inverse_noise(
         background = flags
 
     # automatic block length, from the runs of good samples with no gap in time. The
-    # estimate below still uses the whole TOD
+    # estimate below still uses every chunk whole
     if nperseg is None:
         nperseg = _auto_nperseg(scan.tod.time, flags, sample_rate)
 
@@ -351,7 +352,9 @@ def estimate_inverse_noise(
                 "source in the spectra. Calibrate the scan first."
             )
 
-    inv_noiseps = _inverse_spectra(tod, sample_rate, nperseg, background, workers)
+    inv_noiseps = _inverse_spectra(
+        tod, sample_rate, nperseg, background, chunks=scan.tod.chunks, workers=workers
+    )
     freqs = np.fft.rfftfreq(nperseg, d=1 / sample_rate)
     inv_noiseps = _shape_inverse(inv_noiseps, freqs, filters, passband, sample_rate)
 
@@ -493,19 +496,26 @@ def _inverse_spectra(
     sample_rate: float,
     nperseg: int,
     background: NDArray[np.bool_] | None = None,
+    chunks: NDArray[np.int64] | None = None,
     workers: int = 1,  # TODO: a global setting in the config, not in every signature
 ) -> NDArray[np.float64]:
     """
-    Inverse noise spectrum of every detector, with Welch's method on its whole TOD.
+    Inverse noise spectrum of every detector, with Welch's method on every chunk.
 
-    For every detector, in parallel: the samples outside ``background`` (on the source
-    or flagged) are replaced by a linear interpolation of the good ones, and the mean
-    of the good samples is removed
+    For every detector, in parallel, and in every chunk by itself: the samples outside
+    ``background`` (on the source or flagged) are replaced by a linear interpolation
+    of the good ones, and the mean of the good samples is removed
     (:func:`~tolomeo._lib.spectral._prepare_for_spectrum`); then Welch's method with
-    Hann blocks of ``nperseg`` samples, and the inverse. The inverse has a floor,
-    ``_FLOOR_FACTOR`` times the median of the spectrum: without it a bin with almost
-    no power would get an enormous weight. Bin 0 is set to zero: the offset of the
-    TOD gets no weight.
+    Hann blocks of ``nperseg`` samples. So no block crosses the boundary of two
+    chunks, and every chunk has its own mean. A chunk shorter than ``nperseg``, or
+    with no good sample, is left out.
+
+    The spectra of the chunks are averaged with their number of Welch blocks as
+    weight, which is the average over all the blocks, and only then inverted: the
+    average of the inverses would be biased high, most in the chunks with few blocks.
+    The inverse has a floor, ``_FLOOR_FACTOR`` times the median of the spectrum:
+    without it a bin with almost no power would get an enormous weight. Bin 0 is set
+    to zero: the offset of the TOD gets no weight.
 
     Only the estimate: the filters, the marginalization and ``lag_zero`` are added by
     :func:`estimate_inverse_noise`.
@@ -523,6 +533,10 @@ def _inverse_spectra(
         True for the samples used: one column per detector, or one array for all of
         them. Shape ``(n_samples, n_det)`` or ``(n_samples,)``. Defaults to ``None``,
         all the samples.
+    chunks : :class:`~numpy.ndarray` of int64, optional
+        First row of every chunk, followed by ``n_samples``, as
+        :attr:`TimeOrderedData.chunks <tolomeo.tod.TimeOrderedData.chunks>`.
+        Defaults to ``None``: the whole TOD is one chunk.
     workers : int
         Threads: the detectors are estimated in parallel. Defaults to ``1``.
 
@@ -535,8 +549,8 @@ def _inverse_spectra(
     Raises
     ------
     ValueError
-        If ``tod`` is not 2D, if it has NaN or inf, or if it is shorter than
-        ``nperseg``.
+        If ``tod`` is not 2D, if it has NaN or inf, if no chunk has ``nperseg``
+        samples, or if a detector has no good sample in the chunks that have them.
     """
     # refuse inputs that the estimate cannot work on, before the slow part
     if tod.ndim != 2:
@@ -549,10 +563,16 @@ def _inverse_spectra(
 
     n_samples, n_det = tod.shape
 
-    # at least one Welch block must fit in the TOD
-    if n_samples < nperseg:
+    # without chunks the whole TOD is one chunk
+    if chunks is None:
+        chunks = np.array([0, n_samples], dtype=np.int64)
+
+    # at least one Welch block must fit in a chunk
+    longest = int(np.diff(chunks).max())
+    if longest < nperseg:
         raise ValueError(
-            f"The TOD has {n_samples} samples, fewer than nperseg={nperseg}."
+            f"The longest chunk of the TOD has {longest} samples, fewer than "
+            f"nperseg={nperseg}."
         )
 
     # one column of background per detector
@@ -576,10 +596,26 @@ def _inverse_spectra(
 
     def inverse_spectrum(j: int) -> NDArray[np.float64]:
         """Inverse spectrum of detector ``j``, with the floor and zero at f = 0."""
-        x = _prepare_for_spectrum(
-            tod[:, j], None if background is None else background[:, j]
-        )
-        _, psd = welch(x=x, fs=sample_rate, window="hann", nperseg=nperseg)
+        # sum of the spectra of the chunks, each times its number of blocks
+        weighted = np.zeros(nperseg // 2 + 1)
+        n_blocks = 0
+        for a, b in pairwise(chunks):
+            good = None if background is None else background[a:b, j]
+            if b - a < nperseg or (good is not None and not good.any()):
+                continue  # no whole block, or no good sample, in this chunk
+            x = _prepare_for_spectrum(tod[a:b, j], good)
+            _, psd = welch(x=x, fs=sample_rate, window="hann", nperseg=nperseg)
+            # blocks of welch in the chunk, with its default overlap of half a block
+            k = (b - a - nperseg) // (nperseg // 2) + 1
+            weighted += k * psd
+            n_blocks += k
+
+        if n_blocks == 0:
+            raise ValueError(
+                f"Detector {j} has no good sample in the chunks with at least "
+                f"nperseg={nperseg} samples."
+            )
+        psd = weighted / n_blocks
 
         # an auto-spectrum is positive: the floor keeps the inverse finite
         inverse = 1.0 / np.maximum(psd, np.median(psd) * _FLOOR_FACTOR)
